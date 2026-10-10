@@ -1,0 +1,1050 @@
+# Part III, Advanced topics: chapters 26–30.
+
+part:
+  id: advanced
+  prefix: III
+  title: advanced topics
+
+chapters:
+  - id: ch26
+    prefix: "26"
+    title: string algorithms
+    section: CPH ch. 26
+    leaves:
+      - id: trie
+        section: CPH §26.2
+        label: prefix / autocomplete
+        name: trie
+        alias: prefix tree
+        lead: A tree of characters. Every word is a path from the root.
+        when:
+          - Autocomplete, or how many words start with a prefix
+          - Many lookups of strings that share prefixes
+        how: >-
+          Each node maps a character to a child and stores how many words pass through it.
+          Inserting or looking up a word of length L takes O(L). With S the total length of all
+          words, building costs O(S).
+        time: O(S + q * L)
+        space: O(S)
+        vars: {S: 1000000, q: 100000, L: 20}
+        sketch: |
+          class Node:
+              __slots__ = ("kids", "count", "end")
+
+              def __init__(self):
+                  self.kids, self.count, self.end = {}, 0, False
+
+          class Trie:
+              def __init__(self):
+                  self.root = Node()
+
+              def insert(self, word):
+                  node = self.root
+                  for ch in word:
+                      if ch not in node.kids:
+                          node.kids[ch] = Node()
+                      node = node.kids[ch]
+                      node.count += 1          # words passing through here
+                  node.end = True
+
+              def count_prefix(self, prefix):
+                  node = self.root
+                  for ch in prefix:
+                      node = node.kids.get(ch)
+                      if node is None:
+                          return 0
+                  return node.count
+        traps:
+          - Memory is one node per character in the worst case, and Python objects are heavy
+          - If the words never change, a sorted list with binary search also counts prefixes
+        instead:
+          - if: you search for a pattern inside a long text
+            target: z-algorithm
+          - if: you compare substrings
+            target: string-hashing
+        tags: [trie, prefix, autocomplete, prefix-tree, dictionary, words, strings, search]
+
+      - id: string-hashing
+        section: CPH §26.3
+        label: compare substrings fast
+        name: polynomial hashing
+        alias: rolling hash
+        lead: Precompute prefix hashes, and the hash of any substring takes O(1).
+        when:
+          - Many checks of whether two substrings are equal
+          - Finding repeated substrings or palindromes, often with a binary search on length
+        how: >-
+          h[i] is the hash of the first i characters, with h[i+1] = h[i]·A + s[i] mod B. The
+          hash of s[a:b] is h[b] − h[a]·A^(b−a) mod B. Equal strings always hash equally;
+          different ones collide with probability about 1/B per comparison.
+        time: O(n + q)
+        space: O(n)
+        vars: {n: 1000000, q: 1000000}
+        sketch: |
+          import random
+
+          MOD = (1 << 61) - 1
+          BASE = random.randrange(256, MOD)
+
+          def prefix_hashes(s):
+              h, p = [0] * (len(s) + 1), [1] * (len(s) + 1)
+              for i, ch in enumerate(s):
+                  h[i + 1] = (h[i] * BASE + ord(ch)) % MOD
+                  p[i + 1] = p[i] * BASE % MOD
+              return h, p
+
+          def sub_hash(h, p, a, b):             # hash of s[a:b]
+              return (h[b] - h[a] * p[b - a]) % MOD
+        traps:
+          - A small modulus like 10^9 + 7 collides often over many comparisons (birthday paradox). Use 2^61 − 1 or two moduli
+          - A fixed, known base can be attacked with crafted input. Pick it at random
+        instead:
+          - if: you need every occurrence of one pattern, exactly
+            target: z-algorithm
+        tags: [hashing, rolling-hash, substring, compare, rabin-karp, polynomial-hash, strings, palindrome]
+
+      - id: z-algorithm
+        section: CPH §26.4
+        label: find every match of a pattern
+        name: Z-algorithm
+        lead: z[i] is the longest common prefix of s and s[i:]. Matches show up where z equals the pattern length.
+        when:
+          - Every occurrence of a pattern in a text, in linear time
+          - Periods and borders of a string
+        how: >-
+          Keep the rightmost window [x, y) known to match a prefix of s. Inside it, start z[i]
+          from the value at the mirrored position, then extend by comparing characters. Each
+          successful comparison moves y right, so the total is linear. For pattern matching,
+          run it on pattern + separator + text.
+        time: O(n + m)
+        space: O(n + m)
+        vars: {n: 1000000, m: 100000}
+        sketch: |
+          def z_array(s):
+              n = len(s)
+              z = [0] * n
+              x = y = 0                          # window [x, y) matches a prefix
+              for i in range(1, n):
+                  if i < y:
+                      z[i] = min(y - i, z[i - x])
+                  while i + z[i] < n and s[z[i]] == s[i + z[i]]:
+                      z[i] += 1
+                  if i + z[i] > y:
+                      x, y = i, i + z[i]
+              return z
+
+          def find_all(pattern, text):           # "\0" must not occur in either
+              z = z_array(pattern + "\0" + text)
+              m = len(pattern)
+              return [i - m - 1 for i in range(m + 1, len(z)) if z[i] >= m]
+        traps:
+          - The separator must not occur in the pattern or the text
+          - KMP's prefix function solves the same problems. Use whichever you know
+        instead:
+          - if: you need many different substring comparisons
+            target: string-hashing
+        tags: [z-algorithm, pattern-matching, string-search, occurrences, find, kmp, prefix-function, strings]
+
+  - id: ch27
+    prefix: "27"
+    title: square root algorithms
+    section: CPH ch. 27
+    leaves:
+      - id: sqrt-decomposition
+        section: CPH ch. 27
+        label: updates and queries, simplest code
+        name: square root decomposition
+        alias: blocks
+        lead: Split the array into blocks of about √n and keep a summary for each block.
+        when:
+          - Point updates and range queries where a segment tree would be awkward
+          - You want simple code with O(√n) per operation
+        how: >-
+          Use blocks of size k ≈ √n. A query uses the summaries of the whole blocks it covers,
+          plus at most 2k single elements at the ends. An update changes one element and its
+          block's summary.
+        time: O(n + q √n)
+        space: O(n)
+        vars: {n: 200000, q: 200000}
+        sketch: |
+          import math
+
+          class BlockSums:
+              def __init__(self, a):
+                  self.a = a[:]
+                  self.k = k = max(1, math.isqrt(len(a)))
+                  self.blocks = [sum(a[i:i + k]) for i in range(0, len(a), k)]
+
+              def update(self, i, v):
+                  self.blocks[i // self.k] += v - self.a[i]
+                  self.a[i] = v
+
+              def query(self, l, r):                # inclusive
+                  total, k = 0, self.k
+                  while l <= r and l % k:
+                      total += self.a[l]; l += 1
+                  while l + k - 1 <= r:
+                      total += self.blocks[l // k]; l += k
+                  while l <= r:
+                      total += self.a[l]; l += 1
+                  return total
+        traps:
+          - q·√n with n = q = 2·10^5 is about 10^8. Fine in C++, slow in Python
+          - The best block size depends on the constants. Try a few
+        instead:
+          - if: you want O(log n) per operation
+            target: segment-tree
+          - if: queries are offline and can add and remove elements
+            target: mos-algorithm
+        tags: [sqrt-decomposition, blocks, square-root, range-query, buckets, updates]
+
+      - id: batch-processing
+        section: CPH §27.1
+        label: rebuild in batches between queries
+        name: batch processing
+        lead: Collect updates. Every √n of them, rebuild from scratch; check the pending ones by hand.
+        when:
+          - Updates are hard to apply one by one but a full rebuild takes O(n)
+          - A query can be answered from the last rebuild plus a short list of recent updates
+        how: >-
+          Keep a list of pending updates. A query uses the last rebuild and scans the pending
+          list. When the list reaches about √n items, rebuild in O(n) and clear it. Both the
+          rebuilds and the scans then cost O(q√n) in total. CPH's example rebuilds a BFS grid
+          of distances to the nearest black cell.
+        time: O(q √n)
+        space: O(n)
+        vars: {n: 1000000, q: 100000}
+        sketch: |
+          import math
+
+          def run(n, ops, rebuild, answer):
+              batch = max(1, math.isqrt(n))
+              applied, pending, out = [], [], []
+              base = rebuild(applied)              # O(n)
+              for op, x in ops:
+                  if op == "update":
+                      pending.append(x)
+                      if len(pending) >= batch:
+                          applied += pending
+                          pending = []
+                          base = rebuild(applied)
+                  else:
+                      out.append(answer(base, pending, x))  # scans pending
+              return out
+        traps:
+          - Pick the batch size so that rebuild cost and scan cost balance
+          - It needs queries that can be answered from an old structure plus a short list
+        instead:
+          - if: updates are easy to apply directly
+            target: segment-tree
+        tags: [batch, sqrt, rebuild, offline, updates, queries, buckets]
+
+      - id: case-processing
+        section: CPH §27.1
+        label: few big groups, many small ones
+        name: heavy/light split
+        alias: case processing
+        lead: Treat the few large groups one way and the many small ones another, with √n as the cutoff.
+        when:
+          - Groups of very different sizes (colors in a grid, degrees in a graph)
+          - Work over pairs where either side can be large
+        how: >-
+          At most √n groups can be bigger than √n. Handle each of those heavy groups with an
+          O(n) pass, and each light group directly in O(size²), which totals O(n√n) because
+          light groups have size at most √n. CPH's example finds the closest two cells of the
+          same color in a grid.
+        time: O(n √n)
+        space: O(n)
+        vars: {n: 200000}
+        sketch: |
+          import math
+          from collections import defaultdict
+
+          def split_by_size(items, key):
+              groups = defaultdict(list)
+              for x in items:
+                  groups[key(x)].append(x)
+              limit = math.isqrt(len(items))
+              # at most sqrt(n) groups can be heavy
+              heavy = [g for g in groups.values() if len(g) > limit]
+              light = [g for g in groups.values() if len(g) <= limit]
+              return heavy, light
+
+          # heavy: one O(n) pass each; light: all pairs inside each group
+        traps:
+          - Count both costs, heavy groups × O(n) and the sum of size² over light groups
+          - Adjust the cutoff to balance the two
+        instead:
+          - if: updates and queries alternate on an array
+            target: sqrt-decomposition
+        tags: [heavy-light, case-processing, sqrt, threshold, big-small, groups, degrees]
+
+      - id: partitions-sqrt
+        section: CPH §27.2
+        label: subset sums when the sizes add up to n
+        name: few distinct sizes
+        alias: integer partitions
+        lead: Positive sizes that add up to n can have at most about √(2n) distinct values.
+        when:
+          - Which totals can be formed from items whose sizes sum to n (pieces of a grid, island sizes)
+          - A knapsack whose total weight is bounded by n
+        how: >-
+          Since 1 + 2 + … + k ≤ n forces k ≤ √(2n), group equal sizes together. Run one O(n)
+          subset-sum pass per distinct size, tracking how many copies each total used. That's
+          O(n√n) in total.
+        time: O(n √n)
+        space: O(n)
+        vars: {n: 100000}
+        sketch: |
+          from collections import Counter
+
+          def reachable_sums(sizes):                # sum(sizes) == n
+              n = sum(sizes)
+              can = [False] * (n + 1)
+              can[0] = True
+              for s, c in Counter(sizes).items():   # ~sqrt(2n) distinct s
+                  used = [0] * (n + 1)              # copies of s per total
+                  for t in range(s, n + 1):
+                      if not can[t] and can[t - s] and used[t - s] < c:
+                          can[t] = True
+                          used[t] = used[t - s] + 1
+              return can
+        traps:
+          - It needs a small total n. The trick is about distinct sizes, not the item count
+          - Without grouping equal sizes, the DP can be O(n²)
+        instead:
+          - if: the sizes are arbitrary with a separate capacity
+            target: knapsack
+          - if: a bitset is fast enough
+            target: bitset
+        tags: [partitions, subset-sum, distinct-sizes, sqrt, knapsack, bounded, sum-n]
+
+      - id: mos-algorithm
+        section: CPH §27.3
+        label: offline range queries with add/remove
+        name: Mo's algorithm
+        lead: Sort queries by the block of their left end, then by right end, and slide one window through them.
+        when:
+          - All queries are known in advance and the array never changes
+          - Adding or removing one element updates the answer cheaply, like counting distinct values
+        how: >-
+          Use blocks of size k ≈ √n and sort queries by (l // k, r). Move the window's ends one
+          step at a time to each query's range, calling add and remove. The right end moves
+          O(n) per block and the left end O(k) per query, so the total is O((n + q)√n).
+        time: O((n + q) √n)
+        space: O(n + q)
+        vars: {n: 200000, q: 200000}
+        sketch: |
+          import math
+
+          def distinct_in_ranges(a, queries):      # queries: (l, r) inclusive
+              k = max(1, math.isqrt(len(a)))
+              order = sorted(range(len(queries)),
+                             key=lambda i: (queries[i][0] // k, queries[i][1]))
+              cnt, distinct = {}, 0
+              ans = [0] * len(queries)
+
+              def add(x):
+                  nonlocal distinct
+                  cnt[x] = cnt.get(x, 0) + 1
+                  distinct += cnt[x] == 1
+
+              def remove(x):
+                  nonlocal distinct
+                  cnt[x] -= 1
+                  distinct -= cnt[x] == 0
+
+              L, R = 0, -1
+              for i in order:
+                  l, r = queries[i]
+                  while R < r: R += 1; add(a[R])
+                  while L > l: L -= 1; add(a[L])
+                  while R > r: remove(a[R]); R -= 1
+                  while L < l: remove(a[L]); L += 1
+                  ans[i] = distinct
+              return ans
+        traps:
+          - It only works offline; every query must be known up front
+          - Grow the window before shrinking it, so it never becomes negative
+        instead:
+          - if: there are updates between queries
+            target: sqrt-decomposition
+          - if: the query is a plain sum
+            target: prefix-sums
+        tags: [mo, mos-algorithm, offline, range-queries, distinct, sqrt, window]
+
+  - id: ch28
+    prefix: "28"
+    title: segment trees revisited
+    section: CPH ch. 28
+    leaves:
+      - id: lazy-segment-tree
+        section: CPH §28.1
+        label: update a range, query a range
+        name: lazy propagation
+        alias: lazy segment tree
+        lead: Leave pending updates in nodes and push them down only when needed.
+        when:
+          - Adding v to every element of [l, r], mixed with range sum or min queries
+          - Assigning a value to a range, with range queries
+        how: >-
+          Each node stores its segment's answer and a pending tag. An update that covers a
+          node completely changes its answer and tag without visiting its children. Before
+          visiting a node's children, push its tag down to them. Both operations are O(log n).
+        time: O(n + q log n)
+        space: O(n)
+        vars: {n: 200000, q: 200000}
+        sketch: |
+          class LazySum:                   # range add, range sum; starts at zeros
+              def __init__(self, n):
+                  self.n = n
+                  self.sum = [0] * (4 * n)
+                  self.tag = [0] * (4 * n)
+
+              def _apply(self, v, length, x):
+                  self.sum[v] += x * length
+                  self.tag[v] += x
+
+              def _push(self, v, lo, mid, hi):
+                  if self.tag[v]:
+                      self._apply(2 * v, mid - lo, self.tag[v])
+                      self._apply(2 * v + 1, hi - mid, self.tag[v])
+                      self.tag[v] = 0
+
+              def add(self, l, r, x, v=1, lo=0, hi=None):    # [l, r)
+                  hi = self.n if hi is None else hi
+                  if r <= lo or hi <= l:
+                      return
+                  if l <= lo and hi <= r:
+                      self._apply(v, hi - lo, x)
+                      return
+                  mid = (lo + hi) // 2
+                  self._push(v, lo, mid, hi)
+                  self.add(l, r, x, 2 * v, lo, mid)
+                  self.add(l, r, x, 2 * v + 1, mid, hi)
+                  self.sum[v] = self.sum[2 * v] + self.sum[2 * v + 1]
+
+              def query(self, l, r, v=1, lo=0, hi=None):     # sum of [l, r)
+                  hi = self.n if hi is None else hi
+                  if r <= lo or hi <= l:
+                      return 0
+                  if l <= lo and hi <= r:
+                      return self.sum[v]
+                  mid = (lo + hi) // 2
+                  self._push(v, lo, mid, hi)
+                  return (self.query(l, r, 2 * v, lo, mid)
+                          + self.query(l, r, 2 * v + 1, mid, hi))
+        traps:
+          - Forgetting to push before visiting the children gives stale answers
+          - Mixing two kinds of updates (add and assign) needs a careful tag order
+        instead:
+          - if: updates are single points
+            target: segment-tree
+          - if: you only read the values after all updates
+            target: difference-array
+        tags: [lazy-propagation, segment-tree, range-update, range-query, range-add, lazy]
+
+      - id: dynamic-segment-tree
+        section: CPH §28.2
+        label: huge index range, few used
+        name: dynamic segment tree
+        lead: Create nodes only when an update reaches them, so memory is O(q log N).
+        when:
+          - Indices go up to 10^9 and you can't compress them because queries arrive online
+          - Only a few positions are ever used
+        how: >-
+          Start with only a root for [0, N). An update walks down and creates missing children
+          on the way; a query treats missing nodes as empty. Each operation touches
+          O(log N) nodes.
+        time: O(q log N)
+        space: O(q log N)
+        vars: {q: 200000, N: 1e9}
+        sketch: |
+          class DynSeg:                           # point add, range sum on [0, N)
+              def __init__(self, N):
+                  self.N = N
+                  self.left, self.right, self.sum = [0], [0], [0]  # node 0 = root
+
+              def _child(self, v, side):
+                  kids = self.left if side == 0 else self.right
+                  if not kids[v]:
+                      kids[v] = len(self.sum)
+                      for arr in (self.left, self.right, self.sum):
+                          arr.append(0)
+                  return kids[v]
+
+              def add(self, i, x):
+                  v, lo, hi = 0, 0, self.N
+                  while True:
+                      self.sum[v] += x
+                      if hi - lo == 1:
+                          return
+                      mid = (lo + hi) // 2
+                      if i < mid:
+                          v, hi = self._child(v, 0), mid
+                      else:
+                          v, lo = self._child(v, 1), mid
+
+              def query(self, l, r, v=0, lo=0, hi=None):     # sum of [l, r)
+                  hi = self.N if hi is None else hi
+                  if r <= lo or hi <= l:
+                      return 0
+                  if l <= lo and hi <= r:
+                      return self.sum[v]
+                  mid = (lo + hi) // 2
+                  total = 0
+                  if self.left[v]:
+                      total += self.query(l, r, self.left[v], lo, mid)
+                  if self.right[v]:
+                      total += self.query(l, r, self.right[v], mid, hi)
+                  return total
+        traps:
+          - If all queries are known in advance, coordinate compression is simpler
+          - Child index 0 means missing here; that's safe because no node points back to the root
+        instead:
+          - if: all positions are known in advance
+            target: coordinate-compression
+          - if: you also need old versions
+            target: persistent-segment-tree
+        tags: [dynamic-segment-tree, sparse, large-range, implicit, online, segment-tree]
+
+      - id: persistent-segment-tree
+        section: CPH §28.2
+        label: query old versions
+        name: persistent segment tree
+        lead: An update copies only the O(log n) nodes on its path, so every old version stays valid.
+        when:
+          - Queries about the array as it was after the t-th update
+          - The k-th smallest value in a range, using versions over sorted prefixes
+        how: >-
+          Never modify a node. An update creates new copies of the nodes on the path from the
+          root to the leaf, pointing to the unchanged children of the old version. Keep the
+          root of every version; a query on version t starts from roots[t].
+        time: O(q log n)
+        space: O(q log n)
+        vars: {n: 200000, q: 200000}
+        sketch: |
+          class Persistent:                # point set, range sum; starts at zeros
+              def __init__(self, n):
+                  self.n = n
+                  self.L, self.R, self.S = [0], [0], [0]  # node 0 = empty tree
+                  self.roots = [0]
+
+              def _new(self, l, r, s):
+                  self.L.append(l); self.R.append(r); self.S.append(s)
+                  return len(self.S) - 1
+
+              def _set(self, v, lo, hi, i, x):
+                  if hi - lo == 1:
+                      return self._new(0, 0, x)
+                  mid = (lo + hi) // 2
+                  if i < mid:
+                      l, r = self._set(self.L[v], lo, mid, i, x), self.R[v]
+                  else:
+                      l, r = self.L[v], self._set(self.R[v], mid, hi, i, x)
+                  return self._new(l, r, self.S[l] + self.S[r])
+
+              def update(self, version, i, x):         # returns the new version
+                  root = self._set(self.roots[version], 0, self.n, i, x)
+                  self.roots.append(root)
+                  return len(self.roots) - 1
+
+              def query(self, version, l, r):          # sum of [l, r)
+                  def go(v, lo, hi):
+                      if v == 0 or r <= lo or hi <= l:
+                          return 0
+                      if l <= lo and hi <= r:
+                          return self.S[v]
+                      mid = (lo + hi) // 2
+                      return go(self.L[v], lo, mid) + go(self.R[v], mid, hi)
+                  return go(self.roots[version], 0, self.n)
+        traps:
+          - Memory grows by about log n nodes per update. Preallocate in C++
+          - Never change a node in place, or old versions break
+        instead:
+          - if: only the latest version matters
+            target: segment-tree
+        tags: [persistent, segment-tree, versions, history, immutable, kth-in-range, time-travel]
+
+      - id: segment-tree-nodes
+        section: CPH §28.3
+        label: how often x appears in a range
+        name: structures in nodes
+        alias: merge sort tree
+        lead: Each segment tree node stores a whole structure, like the sorted values of its segment.
+        when:
+          - Counting occurrences of x, or values ≤ x, in a range
+          - The answer for a range can't be combined from small summaries
+        how: >-
+          Each node keeps, for example, the sorted values of its segment (a merge sort tree) or
+          a map of counts. A query visits O(log n) nodes and searches each in O(log n), so it
+          costs O(log² n). Memory is O(n log n).
+        time: O(n log n + q log^2 n)
+        space: O(n log n)
+        vars: {n: 200000, q: 200000}
+        sketch: |
+          from bisect import bisect_right
+          from heapq import merge
+
+          def build(a):                      # sorted lists in an array-based tree
+              n = len(a)
+              t = [[] for _ in range(n)] + [[x] for x in a]
+              for i in range(n - 1, 0, -1):
+                  t[i] = list(merge(t[2 * i], t[2 * i + 1]))
+              return t
+
+          def count_leq(t, n, l, r, x):        # how many values <= x in a[l..r]
+              res = 0
+              l += n
+              r += n + 1
+              while l < r:
+                  if l & 1:
+                      res += bisect_right(t[l], x); l += 1
+                  if r & 1:
+                      r -= 1; res += bisect_right(t[r], x)
+                  l //= 2; r //= 2
+              return res
+        traps:
+          - Memory is O(n log n) values, about 3.6·10^6 for n = 2·10^5
+          - Updates are hard. With updates, keep an ordered structure in each node
+        instead:
+          - if: you only need sums or minimums
+            target: segment-tree
+          - if: the queries are offline
+            target: mos-algorithm
+        tags: [merge-sort-tree, segment-tree, count-in-range, frequency, occurrences, log-squared]
+
+      - id: segment-tree-2d
+        section: CPH §28.4
+        label: rectangle queries with updates
+        name: 2D Fenwick tree
+        alias: 2D segment tree
+        lead: A tree over rows whose nodes are trees over columns. O(log² n) per operation.
+        when:
+          - Sums over rectangles while single cells change
+          - The grid is up to about 1000 × 1000
+        how: >-
+          For sums, a 2D Fenwick tree is simplest: two nested loops, each doing the 1D Fenwick
+          step. A 2D segment tree works the same way and also handles min or max. Memory is
+          O(n²) for an n × n grid.
+        time: O(n^2 + q log^2 n)
+        space: O(n^2)
+        vars: {n: 1000, q: 100000}
+        sketch: |
+          class Fenwick2D:                       # 1-based, n x m
+              def __init__(self, n, m):
+                  self.n, self.m = n, m
+                  self.t = [[0] * (m + 1) for _ in range(n + 1)]
+
+              def add(self, r, c, v):
+                  i = r
+                  while i <= self.n:
+                      j = c
+                      while j <= self.m:
+                          self.t[i][j] += v
+                          j += j & -j
+                      i += i & -i
+
+              def prefix(self, r, c):            # rows 1..r, columns 1..c
+                  s, i = 0, r
+                  while i > 0:
+                      j = c
+                      while j > 0:
+                          s += self.t[i][j]
+                          j -= j & -j
+                      i -= i & -i
+                  return s
+
+              def rect(self, r1, c1, r2, c2):
+                  return (self.prefix(r2, c2) - self.prefix(r1 - 1, c2)
+                          - self.prefix(r2, c1 - 1) + self.prefix(r1 - 1, c1 - 1))
+        traps:
+          - O(n²) memory rules out large grids. Compress coordinates or go offline
+          - Min and max need the segment tree version, not Fenwick
+        instead:
+          - if: the grid never changes
+            target: prefix-sums-2d
+        tags: [2d, segment-tree, fenwick-2d, rectangle, grid, matrix, updates, range-sum]
+
+  - id: ch29
+    prefix: "29"
+    title: geometry
+    section: CPH ch. 29
+    leaves:
+      - id: cross-product
+        section: CPH §29.2
+        label: which side of a line?
+        name: cross product
+        alias: orientation test
+        lead: The sign of (b − a) × (c − a) says whether a → b → c turns left, turns right, or goes straight.
+        when:
+          - Is a point to the left or right of a line?
+          - Orientation tests inside hulls and intersection checks; triangle areas
+        how: >-
+          For vectors u = (x1, y1) and v = (x2, y2), the cross product is x1·y2 − x2·y1. It's
+          positive when v points counterclockwise from u, negative when clockwise, and zero
+          when they're collinear. With integer coordinates it's exact.
+        time: O(1)
+        space: O(1)
+        sketch: |
+          def cross(o, a, b):            # (a - o) x (b - o)
+              return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+          def side(p, a, b):             # 1 left of a->b, -1 right, 0 on the line
+              c = cross(a, b, p)
+              return (c > 0) - (c < 0)
+
+          tri_area_x2 = abs(cross((0, 0), (4, 0), (0, 3)))  # 12, so the area is 6
+        traps:
+          - Keep coordinates as integers. Floats make "exactly on the line" unreliable
+          - With coordinates up to 10^9, the products come close to the 64-bit limit in C++
+        instead:
+          - if: you need to know whether two segments meet
+            target: segment-intersection
+        tags: [cross-product, orientation, geometry, left-right, ccw, turn, side, vector]
+
+      - id: segment-intersection
+        section: CPH §29.2
+        label: do two segments cross?
+        name: segment intersection test
+        lead: They cross when each segment's ends lie on opposite sides of the other. Touching and collinear cases need extra checks.
+        when:
+          - Checking whether two line segments touch or cross
+          - Collision checks between edges
+        how: >-
+          Segments ab and cd cross when cross(a, b, c) and cross(a, b, d) have opposite signs,
+          and so do cross(c, d, a) and cross(c, d, b). If a cross product is 0, that endpoint
+          is on the other segment's line; it touches when it also lies within that segment's
+          bounding box.
+        time: O(1)
+        space: O(1)
+        sketch: |
+          def on_segment(p, a, b):           # p is collinear with a and b
+              return (min(a[0], b[0]) <= p[0] <= max(a[0], b[0])
+                      and min(a[1], b[1]) <= p[1] <= max(a[1], b[1]))
+
+          def intersects(a, b, c, d):        # cross() from the cross product card
+              d1, d2 = cross(a, b, c), cross(a, b, d)
+              d3, d4 = cross(c, d, a), cross(c, d, b)
+              if d1 * d2 < 0 and d3 * d4 < 0:
+                  return True                # a proper crossing
+              ends = [(d1, c, a, b), (d2, d, a, b), (d3, a, c, d), (d4, b, c, d)]
+              return any(k == 0 and on_segment(p, s, e) for k, p, s, e in ends)
+        traps:
+          - Skipping the on-segment checks misses touching and overlapping segments
+          - Use integer coordinates so that the zero tests are exact
+        instead:
+          - if: you count crossings among many horizontal and vertical segments
+            target: segment-crossings
+        tags: [segment-intersection, intersect, geometry, cross-product, lines, collision]
+
+      - id: point-in-polygon
+        section: CPH §29.2
+        label: is a point inside a polygon?
+        name: ray casting
+        lead: Shoot a ray from the point. An odd number of edge crossings means inside.
+        when:
+          - Testing points against a simple polygon, convex or not
+          - Many points against one polygon
+        how: >-
+          Cast a ray to the right and count the edges it crosses. To avoid counting a vertex
+          twice, count an edge only when exactly one of its endpoints is strictly above the
+          point. Check separately whether the point lies on an edge. With q points and an
+          n-sided polygon, that's O(q·n).
+        time: O(q * n)
+        space: O(1)
+        vars: {q: 1000, n: 1000}
+        sketch: |
+          def inside(p, poly):        # 1 inside, 0 on the border, -1 outside
+              x, y = p
+              crossings = 0
+              for i in range(len(poly)):
+                  a, b = poly[i], poly[(i + 1) % len(poly)]
+                  c = cross(a, b, p)
+                  if c == 0 and on_segment(p, a, b):
+                      return 0
+                  # edge spans height y, and crosses it to the right of p
+                  if (a[1] > y) != (b[1] > y) and (c > 0) == (b[1] > a[1]):
+                      crossings += 1
+              return 1 if crossings % 2 else -1
+        traps:
+          - Without the half-open rule, a ray through a vertex is counted twice
+          - Decide what a point on the border should return
+        instead:
+          - if: you need the area instead
+            target: polygon-area
+        tags: [point-in-polygon, inside, ray-casting, polygon, geometry, containment]
+
+      - id: polygon-area
+        section: CPH §29.3
+        label: area of a polygon
+        name: shoelace formula
+        lead: The area is half the absolute sum of x_i·y_(i+1) − x_(i+1)·y_i around the polygon.
+        when:
+          - The area of any simple polygon, given its vertices in order
+          - Telling clockwise from counterclockwise (the sign)
+        how: >-
+          Add up the cross products of consecutive vertices, wrapping around at the end. Half
+          the absolute value is the area, and the sum is positive for counterclockwise order.
+        time: O(n)
+        space: O(1)
+        vars: {n: 1000000}
+        sketch: |
+          def area_x2(poly):                     # twice the signed area
+              s = 0
+              for i in range(len(poly)):
+                  x1, y1 = poly[i]
+                  x2, y2 = poly[(i + 1) % len(poly)]
+                  s += x1 * y2 - x2 * y1
+              return s                           # > 0 means counterclockwise
+
+          area = abs(area_x2([(0, 0), (4, 0), (4, 3), (0, 3)])) / 2    # 12.0
+        traps:
+          - The vertices must be in order around the polygon
+          - Keep twice the area as an integer to avoid floats
+        instead:
+          - if: you need the number of lattice points inside
+            target: picks-theorem
+        tags: [area, polygon, shoelace, geometry, orientation, surveyor]
+
+      - id: picks-theorem
+        section: CPH §29.3
+        label: lattice points inside a polygon
+        name: Pick's theorem
+        lead: A = i + b/2 − 1 for a polygon whose vertices have integer coordinates.
+        when:
+          - Counting the integer points strictly inside a lattice polygon
+          - Counting the integer points on its boundary
+        how: >-
+          Get twice the area from the shoelace formula. The boundary count b is the sum over
+          the edges of gcd(|dx|, |dy|). Then the interior count is i = (2A − b + 2) / 2.
+          Each gcd costs O(log C) for coordinates up to C.
+        time: O(n log C)
+        space: O(1)
+        vars: {n: 100000, C: 1e9}
+        sketch: |
+          from math import gcd
+
+          def lattice_points(poly):              # integer vertices, in order
+              a2 = abs(area_x2(poly))            # from the area card
+              b = 0
+              for (x1, y1), (x2, y2) in zip(poly, poly[1:] + poly[:1]):
+                  b += gcd(abs(x2 - x1), abs(y2 - y1))
+              interior = (a2 - b + 2) // 2
+              return interior, b
+
+          lattice_points([(0, 0), (4, 0), (4, 3), (0, 3)])   # (6, 14)
+        traps:
+          - The vertices must have integer coordinates
+          - It doesn't apply to polygons with holes or self-intersections
+        instead:
+          - if: you only need the area
+            target: polygon-area
+        tags: [pick, lattice-points, integer-points, polygon, area, boundary, gcd, geometry]
+
+      - id: manhattan-rotate
+        section: CPH §29.4
+        label: max Manhattan distance between points
+        name: rotate 45°
+        lead: Map (x, y) to (x + y, x − y). Manhattan distance becomes the larger coordinate difference.
+        when:
+          - The farthest pair under |x1 − x2| + |y1 − y2|
+          - Turning Manhattan problems into easier axis-aligned ones
+        how: >-
+          With u = x + y and v = x − y, the Manhattan distance between two points equals
+          max(|u1 − u2|, |v1 − v2|). So the largest distance is the larger of max u − min u
+          and max v − min v.
+        time: O(n)
+        space: O(n)
+        vars: {n: 1000000}
+        sketch: |
+          def max_manhattan(points):
+              u = [x + y for x, y in points]
+              v = [x - y for x, y in points]
+              return max(max(u) - min(u), max(v) - min(v))
+        traps:
+          - It's for Manhattan distance only
+          - The farthest pair under Euclidean distance needs other methods (it lies on the convex hull)
+        instead:
+          - if: you need the closest pair instead
+            target: closest-pair
+          - if: you need the farthest pair under Euclidean distance
+            target: convex-hull
+        tags: [manhattan, taxicab, rotate, chebyshev, distance, farthest, geometry, l1]
+
+  - id: ch30
+    prefix: "30"
+    title: sweep line algorithms
+    section: CPH ch. 30
+    leaves:
+      - id: event-sweep
+        section: CPH ch. 30
+        label: most overlaps at one moment
+        name: event sweep
+        alias: sweep line
+        lead: Turn intervals into +1 and −1 events, sort them, and keep a running count.
+        when:
+          - The most people present at once, or peak concurrent sessions
+          - The fewest rooms needed to hold all meetings
+        how: >-
+          Each interval [s, e) gives the events (s, +1) and (e, −1). Sort by time, with −1
+          before +1 at equal times when intervals are half-open. Scan while keeping the running
+          sum; its maximum is the answer.
+        time: O(n log n)
+        space: O(n)
+        vars: {n: 1000000}
+        sketch: |
+          def max_overlap(intervals):          # [start, end) intervals
+              events = []
+              for s, e in intervals:
+                  events.append((s, 1))
+                  events.append((e, -1))
+              events.sort()                      # (t, -1) sorts before (t, 1)
+              best = cur = 0
+              for _, d in events:
+                  cur += d
+                  best = max(best, cur)
+              return best
+        traps:
+          - Decide whether an interval ending at t and one starting at t overlap. That fixes the tie order
+          - Sorting tuples already puts −1 before +1 at equal times
+        instead:
+          - if: you want the most intervals that don't overlap
+            target: interval-scheduling
+          - if: you need the coverage at every point
+            target: difference-array
+        tags: [sweep-line, events, intervals, overlap, concurrent, meeting-rooms, peak, maximum-overlap]
+
+      - id: segment-crossings
+        section: CPH §30.1
+        label: count horizontal/vertical crossings
+        name: sweep with a Fenwick tree
+        lead: Sweep left to right. Each vertical segment counts the active horizontal ones in its y-range.
+        when:
+          - Counting the intersections between n horizontal and vertical segments
+          - Other problems that count active intervals inside a range
+        how: >-
+          A horizontal segment adds +1 at its y when it starts and −1 when it ends. A vertical
+          segment at x asks how many active y values lie in [y1, y2]. Process events by x, with
+          starts before queries before ends at the same x if touching counts. A Fenwick tree
+          over the compressed y values does each step in O(log n).
+        time: O(n log n)
+        space: O(n)
+        vars: {n: 200000}
+        sketch: |
+          from bisect import bisect_left, bisect_right
+
+          def count_crossings(horizontal, vertical):
+              # horizontal: (x1, x2, y); vertical: (x, y1, y2); touching counts
+              ys = sorted({y for _, _, y in horizontal})
+              pos = {y: i + 1 for i, y in enumerate(ys)}
+              events = []
+              for x1, x2, y in horizontal:
+                  events.append((x1, 0, y, 0))        # start
+                  events.append((x2, 2, y, 0))        # end
+              for x, y1, y2 in vertical:
+                  events.append((x, 1, y1, y2))       # query
+              events.sort()
+              fw = Fenwick(len(ys))                   # from the Fenwick card
+              total = 0
+              for x, kind, a, b in events:
+                  if kind == 0:
+                      fw.add(pos[a], 1)
+                  elif kind == 2:
+                      fw.add(pos[a], -1)
+                  else:
+                      lo, hi = bisect_left(ys, a) + 1, bisect_right(ys, b)
+                      if lo <= hi:
+                          total += fw.query(lo, hi)
+              return total
+        traps:
+          - The tie order at equal x decides whether touching endpoints count
+          - Compress the y coordinates first
+        instead:
+          - if: there are only a few segments at arbitrary angles
+            target: segment-intersection
+        tags: [sweep-line, intersections, horizontal-vertical, fenwick, crossings, segments, geometry]
+
+      - id: closest-pair
+        section: CPH §30.2
+        label: closest pair of points
+        name: sweep with a sorted set
+        lead: Sweep by x. Only points within the best distance so far need checking, and there are few of them.
+        when:
+          - The smallest Euclidean distance among n points
+          - n is too large to check every pair
+        how: >-
+          Sort by x. Keep the points whose x is within d (the best so far) of the current one,
+          ordered by y. For a new point, only those with y within d can be closer, and there
+          are O(1) of them. Update d, add the point, and drop points that fell more than d
+          behind in x.
+        time: O(n log n)
+        space: O(n)
+        vars: {n: 200000}
+        sketch: |
+          from math import dist, inf
+          from sortedcontainers import SortedList
+
+          def closest_pair(points):
+              pts = sorted(points)
+              best = inf
+              active = SortedList()            # (y, x) of points within best in x
+              left = 0
+              for x, y in pts:
+                  while pts[left][0] < x - best:
+                      lx, ly = pts[left]
+                      active.remove((ly, lx))
+                      left += 1
+                  for ay, ax in active.irange((y - best, -inf), (y + best, inf)):
+                      best = min(best, dist((x, y), (ax, ay)))
+                  active.add((y, x))
+              return best
+        traps:
+          - Compare squared integer distances if you need exact results
+          - Divide and conquer is the other classic O(n log n) method
+        instead:
+          - if: you need the farthest pair
+            target: convex-hull
+          - if: the distance is Manhattan
+            target: manhattan-rotate
+        tags: [closest-pair, nearest, points, sweep-line, geometry, distance, euclidean]
+
+      - id: convex-hull
+        section: CPH §30.3
+        label: fence around all points
+        name: convex hull
+        alias: Andrew's monotone chain
+        lead: Sort the points, then build the lower and upper hulls with a stack that pops wrong turns.
+        when:
+          - The smallest convex polygon that contains every point
+          - The farthest pair of points (both lie on the hull), or other extreme-point questions
+        how: >-
+          Sort by (x, y). Build the lower hull from left to right: before adding a point, pop
+          while the last two points and the new one don't turn counterclockwise. Build the
+          upper hull the same way from right to left, then join the two.
+        time: O(n log n)
+        space: O(n)
+        vars: {n: 1000000}
+        sketch: |
+          def convex_hull(points):    # counterclockwise, collinear points dropped
+              pts = sorted(set(points))
+              if len(pts) <= 2:
+                  return pts
+
+              def half(seq):
+                  h = []
+                  for p in seq:
+                      while len(h) >= 2 and cross(h[-2], h[-1], p) <= 0:
+                          h.pop()
+                      h.append(p)
+                  return h
+
+              lower, upper = half(pts), half(reversed(pts))
+              return lower[:-1] + upper[:-1]
+        traps:
+          - Use <= 0 to drop collinear points and < 0 to keep them
+          - Remove duplicate points first, or the turn test misbehaves
+        instead:
+          - if: you need the hull's area
+            target: polygon-area
+        tags: [convex-hull, hull, fence, monotone-chain, graham-scan, geometry, points, extreme]

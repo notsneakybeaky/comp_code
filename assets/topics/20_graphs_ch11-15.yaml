@@ -1,0 +1,738 @@
+# Part II, Graph algorithms: chapters 11–15.
+# n = nodes, m = edges unless a leaf says otherwise.
+
+part:
+  id: graphs
+  prefix: II
+  title: graph algorithms
+
+chapters:
+  - id: ch11
+    prefix: "11"
+    title: basics of graphs
+    section: CPH ch. 11
+    leaves:
+      - id: adjacency-list
+        section: CPH §11.2
+        label: store a graph
+        name: adjacency list
+        lead: For each node, a list of its neighbors. O(n + m) memory and the usual default.
+        when:
+          - Almost every graph algorithm (DFS, BFS, Dijkstra)
+          - The graph is sparse, with m much smaller than n²
+        how: >-
+          Make `adj = [[] for _ in range(n)]`. For an undirected edge u–v, append v to adj[u]
+          and u to adj[v]. For weighted edges, store (neighbor, weight) pairs.
+        time: O(n + m)
+        space: O(n + m)
+        vars: {n: 200000, m: 200000}
+        sketch: |
+          def read_graph(n, edges, directed=False):    # edges: (u, v, w)
+              adj = [[] for _ in range(n)]
+              for u, v, w in edges:
+                  adj[u].append((v, w))
+                  if not directed:
+                      adj[v].append((u, w))
+              return adj
+        traps:
+          - For undirected graphs, add both directions
+          - Input is often 1-based. Subtract 1, or allocate n + 1 lists
+        instead:
+          - if: n is small and you often ask whether an edge exists
+            target: adjacency-matrix
+        tags: [graph, adjacency-list, edges, neighbors, representation, store]
+
+      - id: adjacency-matrix
+        section: CPH §11.2
+        label: is there an edge u–v? (small n)
+        name: adjacency matrix
+        lead: An n × n table. Edge lookups are O(1) but memory is O(n²).
+        when:
+          - n is at most a few thousand
+          - Floyd–Warshall or matrix techniques need it
+        how: >-
+          `mat[u][v]` holds 1, or the weight, when there is an edge from u to v. Listing a
+          node's neighbors costs O(n) even when it has only a few.
+        time: O(n^2)
+        space: O(n^2)
+        vars: {n: 5000}
+        sketch: |
+          def to_matrix(n, edges):               # undirected, weighted
+              INF = float("inf")
+              mat = [[INF] * n for _ in range(n)]
+              for i in range(n):
+                  mat[i][i] = 0
+              for u, v, w in edges:
+                  mat[u][v] = min(mat[u][v], w)  # keep the cheapest parallel edge
+                  mat[v][u] = min(mat[v][u], w)
+              return mat
+        traps:
+          - n = 10^5 would need 10^10 cells
+          - Parallel edges overwrite each other unless you keep the minimum
+        instead:
+          - if: the graph is large and sparse
+            target: adjacency-list
+          - if: you want shortest paths between all pairs
+            target: floyd-warshall
+        tags: [graph, adjacency-matrix, matrix, dense, representation, edge-lookup]
+
+  - id: ch12
+    prefix: "12"
+    title: graph traversal
+    section: CPH ch. 12
+    leaves:
+      - id: dfs
+        section: CPH §12.1
+        label: visit everything reachable
+        name: DFS
+        alias: depth-first search
+        lead: Go as deep as possible, then back up. Each node and edge is handled once.
+        when:
+          - Finding everything reachable from a node
+          - The base for cycle checks, components, topological order and tree DP
+        how: >-
+          Mark the start as visited, then visit each unvisited neighbor in turn. In Python, use
+          an explicit stack instead of recursion so deep graphs don't hit the recursion limit.
+        time: O(n + m)
+        space: O(n)
+        vars: {n: 200000, m: 400000}
+        sketch: |
+          def reachable(adj, start):
+              seen = [False] * len(adj)
+              seen[start] = True
+              stack = [start]
+              while stack:
+                  u = stack.pop()
+                  for v in adj[u]:
+                      if not seen[v]:
+                          seen[v] = True
+                          stack.append(v)
+              return seen
+        traps:
+          - Recursive DFS along a path of 10^5 nodes overflows Python's stack
+          - This stack version doesn't visit in exactly the recursive order. Fine for reachability, not for finish times
+        instead:
+          - if: you need the fewest steps
+            target: bfs
+          - if: you need to count the separate pieces
+            target: components
+        tags: [dfs, depth-first, traversal, reachable, graph, visit, flood-fill, connectivity]
+
+      - id: bfs
+        section: CPH §12.2
+        label: fewest steps, unweighted
+        name: BFS
+        alias: breadth-first search
+        lead: Explore in layers. The first time you reach a node is along a shortest path.
+        when:
+          - Every move costs the same (grids, word ladders, puzzle states)
+          - You need the distance from a start to every node
+        how: >-
+          Put the start in a queue with distance 0. Pop a node; every unvisited neighbor gets
+          distance + 1 and joins the queue. Nodes leave the queue in order of distance, so each
+          distance is final when it's set.
+        time: O(n + m)
+        space: O(n)
+        vars: {n: 1000000, m: 4000000}
+        sketch: |
+          from collections import deque
+
+          def bfs(adj, start):
+              dist = [-1] * len(adj)
+              dist[start] = 0
+              q = deque([start])
+              while q:
+                  u = q.popleft()
+                  for v in adj[u]:
+                      if dist[v] == -1:
+                          dist[v] = dist[u] + 1
+                          q.append(v)
+              return dist
+        traps:
+          - Mark nodes when you push them, not when you pop them, or they enter the queue many times
+          - Different edge weights break it. Use Dijkstra
+        instead:
+          - if: edges have different weights
+            target: dijkstra
+          - if: any path will do, not the shortest
+            target: dfs
+        tags: [bfs, breadth-first, shortest, fewest-steps, unweighted, grid, maze, distance, layers]
+
+      - id: components
+        section: CPH §12.3
+        label: how many separate pieces?
+        name: connected components
+        lead: Start a search from every unvisited node. Each search finds one component.
+        when:
+          - Counting islands, groups or networks
+          - Checking whether the whole graph is connected
+        how: >-
+          Loop over the nodes. When one is unvisited, search from it and give every node it
+          reaches the same component id. The number of searches is the number of components.
+        time: O(n + m)
+        space: O(n)
+        vars: {n: 200000, m: 400000}
+        sketch: |
+          def components(adj):
+              comp = [-1] * len(adj)
+              count = 0
+              for s in range(len(adj)):
+                  if comp[s] != -1:
+                      continue
+                  comp[s] = count
+                  stack = [s]
+                  while stack:
+                      u = stack.pop()
+                      for v in adj[u]:
+                          if comp[v] == -1:
+                              comp[v] = count
+                              stack.append(v)
+                  count += 1
+              return count, comp
+        traps:
+          - In a directed graph this finds what's reachable, not strongly connected components
+          - If edges arrive over time, rerunning the search after each one is slow
+        instead:
+          - if: edges are added over time
+            target: union-find
+          - if: the graph is directed and you need groups that reach each other
+            target: scc
+        tags: [components, connected, islands, groups, connectivity, count, graph]
+
+      - id: cycle-undirected
+        section: CPH §12.3
+        label: does it have a cycle? (undirected)
+        name: cycle check
+        lead: During a search, meeting a visited node that isn't your parent means a cycle.
+        when:
+          - Checking whether an undirected graph is a forest
+          - Finding whether adding an edge would close a loop
+        how: >-
+          Search from every unvisited node, remembering each node's parent. An edge to an
+          already visited node other than the parent closes a cycle. Equivalently, a component
+          with c nodes is a tree exactly when it has c − 1 edges.
+        time: O(n + m)
+        space: O(n)
+        vars: {n: 200000, m: 200000}
+        sketch: |
+          def has_cycle(adj):                # undirected, no parallel edges
+              n = len(adj)
+              parent = [-2] * n              # -2 = not visited yet
+              for s in range(n):
+                  if parent[s] != -2:
+                      continue
+                  parent[s] = -1
+                  stack = [s]
+                  while stack:
+                      u = stack.pop()
+                      for v in adj[u]:
+                          if parent[v] == -2:
+                              parent[v] = u
+                              stack.append(v)
+                          elif v != parent[u]:
+                              return True
+              return False
+        traps:
+          - Directed graphs need a different check (three colors, or a topological sort)
+          - Two parallel edges between the same nodes form a cycle that this check misses
+        instead:
+          - if: the graph is directed
+            target: topological-sort
+          - if: edges arrive one at a time
+            target: union-find
+        tags: [cycle, undirected, forest, tree-check, loop, dfs, graph]
+
+      - id: bipartite
+        section: CPH §12.3
+        label: split into two sides
+        name: bipartite check
+        alias: 2-coloring
+        lead: Color nodes alternately during a search. A conflict means an odd cycle.
+        when:
+          - Splitting people into two teams so that no conflicting pair shares a team
+          - Checking whether a graph has an odd cycle
+        how: >-
+          Give the start color 0 and every neighbor the opposite color, by BFS or DFS. If an
+          edge ever joins two nodes of the same color, the graph is not bipartite. Start again
+          from each uncolored node.
+        time: O(n + m)
+        space: O(n)
+        vars: {n: 200000, m: 400000}
+        sketch: |
+          from collections import deque
+
+          def two_color(adj):
+              color = [-1] * len(adj)
+              for s in range(len(adj)):
+                  if color[s] != -1:
+                      continue
+                  color[s] = 0
+                  q = deque([s])
+                  while q:
+                      u = q.popleft()
+                      for v in adj[u]:
+                          if color[v] == -1:
+                              color[v] = 1 - color[u]
+                              q.append(v)
+                          elif color[v] == color[u]:
+                              return None         # odd cycle
+              return color
+        traps:
+          - A disconnected graph needs a new start in every component
+          - Three colors is NP-hard in general; nothing this simple works for it
+        instead:
+          - if: you then want to pair nodes across the two sides
+            target: bipartite-matching
+        tags: [bipartite, two-coloring, odd-cycle, teams, split, graph, coloring]
+
+  - id: ch13
+    prefix: "13"
+    title: shortest paths
+    section: CPH ch. 13
+    leaves:
+      - id: dijkstra
+        section: CPH §13.2
+        label: cheapest path, weighted
+        name: Dijkstra
+        lead: Always settle the closest unsettled node next, using a heap.
+        when:
+          - Edge weights are non-negative
+          - You need distances from one source to every node
+        how: >-
+          Push (0, source) into a min-heap. Pop the smallest distance, and skip it if it's
+          outdated. Otherwise relax each edge: if `d + w` beats the neighbor's distance, update
+          it and push. Each edge causes at most one push.
+        time: O((n + m) log n)
+        space: O(n + m)
+        vars: {n: 200000, m: 400000}
+        sketch: |
+          import heapq
+
+          def dijkstra(adj, src):              # adj[u] = [(v, w), ...]
+              dist = [float("inf")] * len(adj)
+              dist[src] = 0
+              pq = [(0, src)]
+              while pq:
+                  d, u = heapq.heappop(pq)
+                  if d > dist[u]:
+                      continue                 # outdated entry
+                  for v, w in adj[u]:
+                      if d + w < dist[v]:
+                          dist[v] = d + w
+                          heapq.heappush(pq, (dist[v], v))
+              return dist
+        traps:
+          - Negative edges give wrong answers
+          - Without the outdated-entry check it can get much slower
+          - To rebuild the path, store each node's predecessor when you relax an edge
+        instead:
+          - if: some edges are negative
+            target: bellman-ford
+          - if: every edge costs the same
+            target: bfs
+          - if: you need all pairs and n ≤ 500
+            target: floyd-warshall
+        tags: [dijkstra, shortest, shortest-path, cheapest, weighted, path, distance, heap, routing, graph]
+
+      - id: bellman-ford
+        section: CPH §13.1
+        label: negative edges or cycles
+        name: Bellman–Ford
+        lead: Relax every edge n − 1 times. If anything still improves, there's a negative cycle.
+        when:
+          - Some edge weights are negative
+          - You must detect a negative cycle, such as an arbitrage loop
+        how: >-
+          Start with dist[source] = 0 and everything else infinite. Repeat n − 1 rounds: for
+          every edge (u, v, w), set dist[v] = min(dist[v], dist[u] + w). If one more round still
+          improves something, a negative cycle is reachable from the source.
+        time: O(n * m)
+        space: O(n)
+        vars: {n: 2500, m: 5000}
+        sketch: |
+          def bellman_ford(n, edges, src):        # edges: (u, v, w)
+              INF = float("inf")
+              dist = [INF] * n
+              dist[src] = 0
+              for _ in range(n - 1):
+                  changed = False
+                  for u, v, w in edges:
+                      if dist[u] != INF and dist[u] + w < dist[v]:
+                          dist[v] = dist[u] + w
+                          changed = True
+                  if not changed:
+                      break
+              neg_cycle = any(dist[u] != INF and dist[u] + w < dist[v]
+                              for u, v, w in edges)
+              return dist, neg_cycle
+        traps:
+          - Only cycles reachable from the source are detected. Start every node at 0 to find any cycle
+          - In an undirected graph, a single negative edge is already a negative cycle
+        instead:
+          - if: all weights are non-negative
+            target: dijkstra
+          - if: n is small and you need all pairs
+            target: floyd-warshall
+        tags: [bellman-ford, negative, negative-cycle, shortest, shortest-path, arbitrage, weighted, spfa]
+
+      - id: floyd-warshall
+        section: CPH §13.3
+        label: all pairs, small n
+        name: Floyd–Warshall
+        lead: Three loops. Allow paths through node k, for each k in turn.
+        when:
+          - n is at most about 500 and you need the distance between every pair
+          - Negative edges are fine, as long as there are no negative cycles
+        how: >-
+          Start from the adjacency matrix (0 on the diagonal, edge weights, infinity elsewhere).
+          For each k, for each i and j, `d[i][j] = min(d[i][j], d[i][k] + d[k][j])`.
+          The k loop must be the outermost one.
+        time: O(n^3)
+        space: O(n^2)
+        vars: {n: 400}
+        sketch: |
+          def floyd_warshall(d):              # n x n matrix, updated in place
+              n = len(d)
+              for k in range(n):
+                  dk = d[k]
+                  for i in range(n):
+                      dik = d[i][k]
+                      if dik == float("inf"):
+                          continue
+                      di = d[i]
+                      for j in range(n):
+                          if dik + dk[j] < di[j]:
+                              di[j] = dik + dk[j]
+              return d
+        traps:
+          - The k loop must be the outer loop
+          - A negative value on the diagonal afterward means a negative cycle
+        instead:
+          - if: you only need distances from one source
+            target: dijkstra
+        tags: [floyd-warshall, all-pairs, shortest, shortest-path, distance-matrix, transitive-closure, dense]
+
+  - id: ch14
+    prefix: "14"
+    title: tree algorithms
+    section: CPH ch. 14
+    leaves:
+      - id: tree-dp
+        section: CPH §14.1
+        label: compute something per subtree
+        name: tree DP
+        alias: subtree DP
+        lead: Handle children before parents. Each node combines its children's answers.
+        when:
+          - Subtree sizes, sums or depths, or the best choice within each subtree
+          - Independent set or matching on a tree
+        how: >-
+          Root the tree. Get an order where every parent comes before its children, walk it
+          backwards, and fill dp[u] from the dp values of u's children. Doing it iteratively
+          avoids Python's recursion limit.
+        time: O(n)
+        space: O(n)
+        vars: {n: 200000}
+        sketch: |
+          def subtree_sizes(adj, root=0):
+              n = len(adj)
+              parent, order = [-1] * n, []
+              seen = [False] * n
+              seen[root] = True
+              stack = [root]
+              while stack:
+                  u = stack.pop()
+                  order.append(u)              # parents before children
+                  for v in adj[u]:
+                      if not seen[v]:
+                          seen[v] = True
+                          parent[v] = u
+                          stack.append(v)
+              size = [1] * n
+              for u in reversed(order):        # children before parents
+                  if parent[u] != -1:
+                      size[parent[u]] += size[u]
+              return size
+        traps:
+          - Recursion depth equals the tree's height, which can be n
+          - Keep parent pointers so you never walk back up the tree
+        instead:
+          - if: you need the answer for every possible root
+            target: rerooting
+          - if: you need the longest path
+            target: tree-diameter
+        tags: [tree, dp, subtree, post-order, rooted, size, sum, tree-dp]
+
+      - id: tree-diameter
+        section: CPH §14.2
+        label: longest path in a tree
+        name: tree diameter
+        alias: two searches
+        lead: Search from any node to find the farthest node a. The farthest distance from a is the diameter.
+        when:
+          - The longest distance between two nodes of a tree
+          - The center of a tree, which is the middle of a diameter
+        how: >-
+          Run BFS from any node and take the farthest node a. Run it again from a; the largest
+          distance found is the diameter, and its endpoint b is the other end. For weighted
+          trees, use a DFS that sums the (non-negative) weights.
+        time: O(n)
+        space: O(n)
+        vars: {n: 200000}
+        sketch: |
+          from collections import deque
+
+          def farthest(adj, s):
+              dist = [-1] * len(adj)
+              dist[s] = 0
+              q = deque([s])
+              while q:
+                  u = q.popleft()
+                  for v in adj[u]:
+                      if dist[v] == -1:
+                          dist[v] = dist[u] + 1
+                          q.append(v)
+              far = max(range(len(adj)), key=dist.__getitem__)
+              return far, dist[far]
+
+          def diameter(adj):
+              a, _ = farthest(adj, 0)
+              b, d = farthest(adj, a)
+              return d, a, b
+        traps:
+          - It only works on trees with non-negative weights
+          - In a general graph, the longest simple path is NP-hard
+        instead:
+          - if: you need the farthest node from every node
+            target: rerooting
+        tags: [tree, diameter, longest-path, farthest, center, bfs]
+
+      - id: rerooting
+        section: CPH §14.3
+        label: farthest node from every node
+        name: rerooting
+        alias: all longest paths
+        lead: Two passes. Down for subtree answers, then up to add what lies outside each subtree.
+        when:
+          - You need an answer for every possible root (farthest distance, sum of distances)
+          - A full search from each node would be O(n²)
+        how: >-
+          First pass, children before parents: down[u] is the longest path going down from u.
+          Second pass, parents before children: up[v] is the longest path from v whose first
+          step goes to its parent u; it extends up[u] or the best down path through one of v's
+          siblings. The answer for u is max(down[u], up[u]).
+        time: O(n)
+        space: O(n)
+        vars: {n: 200000}
+        sketch: |
+          def all_farthest(adj, root=0):          # unweighted tree
+              n = len(adj)
+              parent, order, seen = [-1] * n, [], [False] * n
+              seen[root] = True
+              stack = [root]
+              while stack:
+                  u = stack.pop()
+                  order.append(u)
+                  for v in adj[u]:
+                      if not seen[v]:
+                          seen[v] = True
+                          parent[v] = u
+                          stack.append(v)
+              down = [0] * n
+              for u in reversed(order):
+                  if parent[u] != -1:
+                      down[parent[u]] = max(down[parent[u]], down[u] + 1)
+              up = [0] * n
+              for u in order:                     # parents before children
+                  kids = [v for v in adj[u] if v != parent[u]]
+                  best1 = best2 = -1              # two largest down[v] + 1
+                  for v in kids:
+                      d = down[v] + 1
+                      if d > best1:
+                          best1, best2 = d, best1
+                      elif d > best2:
+                          best2 = d
+                  for v in kids:
+                      other = best2 if down[v] + 1 == best1 else best1
+                      up[v] = 1 + max(up[u], other, 0)
+              return [max(down[u], up[u]) for u in range(n)]
+        traps:
+          - When a child gives the best value, it must use the second best from its siblings
+          - Keep both passes iterative for deep trees
+        instead:
+          - if: you only need the overall longest path
+            target: tree-diameter
+          - if: one fixed root is enough
+            target: tree-dp
+        tags: [rerooting, tree, all-roots, farthest, eccentricity, dp, two-pass]
+
+      - id: binary-tree-orders
+        section: CPH §14.4
+        label: walk or rebuild a binary tree
+        name: traversal orders
+        alias: pre / in / post-order
+        lead: Pre-order is node, left, right. In-order is left, node, right. Post-order is left, right, node.
+        when:
+          - Printing a binary search tree in sorted order (in-order)
+          - Rebuilding a tree from its pre-order and in-order sequences
+        how: >-
+          Each order is one recursive visit with the node placed first, in the middle or last.
+          Given the pre-order and in-order of distinct values, the first pre-order value is the
+          root, and its position in the in-order splits the left and right subtrees.
+        time: O(n)
+        space: O(n)
+        vars: {n: 100000}
+        sketch: |
+          def build(pre, ino):                    # distinct values
+              pos = {v: i for i, v in enumerate(ino)}
+              it = iter(pre)
+
+              def go(lo, hi):                     # the subtree that is ino[lo:hi]
+                  if lo >= hi:
+                      return None
+                  root = next(it)
+                  m = pos[root]
+                  return (root, go(lo, m), go(m + 1, hi))   # (value, left, right)
+
+              return go(0, len(ino))
+        traps:
+          - Pre-order and post-order together don't determine a binary tree. You need the in-order
+          - Repeated values make the split ambiguous
+        instead:
+          - if: you need values computed over subtrees
+            target: tree-dp
+        tags: [binary-tree, traversal, preorder, inorder, postorder, rebuild, bst]
+
+  - id: ch15
+    prefix: "15"
+    title: spanning trees
+    section: CPH ch. 15
+    leaves:
+      - id: kruskal
+        section: CPH §15.1
+        label: cheapest way to connect everything
+        name: Kruskal
+        alias: minimum spanning tree
+        lead: Take edges from cheapest to most expensive, skipping any that would close a cycle.
+        when:
+          - Connecting every node with the least total edge weight (cables, roads)
+          - The graph is given as a list of edges
+        how: >-
+          Sort the edges by weight. With union-find, take each edge whose ends are in different
+          components and join them. A connected graph ends with n − 1 edges taken.
+        time: O(m log m)
+        space: O(n + m)
+        vars: {m: 400000}
+        sketch: |
+          def kruskal(n, edges):                 # edges: (w, u, v)
+              parent = list(range(n))
+
+              def find(x):
+                  while parent[x] != x:
+                      parent[x] = parent[parent[x]]
+                      x = parent[x]
+                  return x
+
+              total = used = 0
+              for w, u, v in sorted(edges):
+                  a, b = find(u), find(v)
+                  if a != b:
+                      parent[a] = b
+                      total += w
+                      used += 1
+              return total if used == n - 1 else None   # None: not connected
+        traps:
+          - Fewer than n − 1 edges taken means the graph isn't connected
+          - For a maximum spanning tree, sort in decreasing order
+        instead:
+          - if: the graph is dense, with m close to n²
+            target: prim
+        tags: [mst, minimum-spanning-tree, kruskal, connect, cheapest, network, union-find, cables]
+
+      - id: union-find
+        section: CPH §15.2
+        label: same group?
+        name: union-find
+        alias: disjoint set union
+        lead: Merge groups and ask whether two items share a group, both nearly in constant time.
+        when:
+          - Connections arrive over time and you ask whether two items are connected
+          - Counting groups as they merge
+        how: >-
+          Each group is a tree, and find(x) walks up to its root. Union hangs the smaller tree
+          under the larger one, which keeps every tree O(log n) high. Path compression flattens
+          the trees further.
+        time: O((n + q) log n)
+        space: O(n)
+        vars: {n: 200000, q: 200000}
+        sketch: |
+          class DSU:
+              def __init__(self, n):
+                  self.parent = list(range(n))
+                  self.size = [1] * n
+
+              def find(self, x):
+                  while self.parent[x] != x:
+                      self.parent[x] = self.parent[self.parent[x]]  # path halving
+                      x = self.parent[x]
+                  return x
+
+              def union(self, a, b):
+                  a, b = self.find(a), self.find(b)
+                  if a == b:
+                      return False
+                  if self.size[a] < self.size[b]:
+                      a, b = b, a
+                  self.parent[b] = a                 # smaller under larger
+                  self.size[a] += self.size[b]
+                  return True
+        traps:
+          - Without union by size (or rank), trees can turn into long chains
+          - It can't split groups. Process deletions in reverse, as additions
+        instead:
+          - if: the graph is fixed and you need the components once
+            target: components
+          - if: you need the actual path between two nodes
+            target: bfs
+        tags: [union-find, dsu, disjoint-set, groups, connected, merge, same-group, components]
+
+      - id: prim
+        section: CPH §15.3
+        label: MST on a dense graph
+        name: Prim
+        lead: Grow one tree from a start node, always adding the cheapest edge that leaves it.
+        when:
+          - The graph is dense, or given as an adjacency matrix
+          - You want to grow the tree outward from one node
+        how: >-
+          Like Dijkstra, except a node's key is the cheapest single edge joining it to the tree.
+          With a heap it's O(m log n). On a dense matrix, a version that scans an array instead
+          of using a heap is O(n²).
+        time: O(m log n)
+        space: O(n + m)
+        vars: {n: 200000, m: 400000}
+        sketch: |
+          import heapq
+
+          def prim(adj, start=0):              # adj[u] = [(v, w), ...]
+              n = len(adj)
+              in_tree = [False] * n
+              pq, total, taken = [(0, start)], 0, 0
+              while pq:
+                  w, u = heapq.heappop(pq)
+                  if in_tree[u]:
+                      continue
+                  in_tree[u] = True
+                  total += w
+                  taken += 1
+                  for v, wv in adj[u]:
+                      if not in_tree[v]:
+                          heapq.heappush(pq, (wv, v))
+              return total if taken == n else None
+        traps:
+          - It's not Dijkstra. The key is the edge weight, not the distance from the start
+          - On a disconnected graph some nodes are never reached
+        instead:
+          - if: the graph is sparse and given as an edge list
+            target: kruskal
+        tags: [mst, prim, minimum-spanning-tree, dense, heap, connect, cheapest]

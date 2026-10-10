@@ -1,0 +1,73 @@
+# The toolkit: process help that isn't tied to one chapter.
+# Toolkit leaves may use `steps` (title, detail) and `table` (size, fits, examples)
+# in addition to the usual leaf fields.
+
+part:
+  id: toolkit
+  title: toolkit
+
+leaves:
+  - id: pipeline
+    label: stuck? run the pipeline
+    name: checklist
+    lead: Nothing in the tree fits yet. Work it out in six small steps.
+    when:
+      - You can't name the approach, or every idea you have feels too slow
+      - You keep rewriting code without knowing why it's wrong
+    steps:
+      - title: restate
+        detail: Say the problem in one sentence, in your own words. Write down the input, the output and the exact limits on n, values and time.
+      - title: small examples
+        detail: Solve three or four tiny cases by hand, including the edge cases (n = 1, all equal, already sorted, empty).
+      - title: brute force
+        detail: Write the simplest thing that is obviously correct, even if it is exponential. It is your reference answer.
+      - title: find the waste
+        detail: Look for work the brute force repeats. The same subproblem twice? Rescanning a range? Sorting again and again? That repetition is where the speedup is.
+      - title: refine
+        detail: Remove the waste with the matching tool (memoize, prefix sums, a heap, two pointers, sorting first). Search this tree for the situation you just named.
+      - title: state complexity
+        detail: Write the new time and space as O(…) and plug in your sizes with `what fits my input size?`. Check the fast version against the brute force on random small inputs.
+    traps:
+      - Skipping the brute force. Without it you can't test the fast version
+      - Optimizing before you know what the waste is
+      - Forgetting a limit, like values up to 10^9 that overflow a 32-bit int
+    instead:
+      - if: you know n and want to know what's fast enough
+        target: input-size
+    tags: [stuck, help, process, pipeline, debug, approach, plan]
+
+  - id: input-size
+    section: CPH §2.3
+    label: what fits my input size?
+    name: size table
+    lead: The input limit tells you the time complexity the intended solution has.
+    when:
+      - You've read the limits and want to know which approaches are fast enough
+      - You're choosing between a simple slow idea and a harder fast one
+    how: A typical machine does about 10^8 simple steps per second. Match n to the slowest complexity that still fits in the time limit (usually 1 second).
+    table:
+      - size: n ≤ 10
+        fits: O(n!)
+        examples: try every permutation
+      - size: n ≤ 20
+        fits: O(2^n)
+        examples: try every subset, bitmask DP
+      - size: n ≤ 500
+        fits: O(n^3)
+        examples: Floyd–Warshall, interval DP
+      - size: n ≤ 5000
+        fits: O(n^2)
+        examples: all pairs, quadratic DP
+      - size: n ≤ 10^6
+        fits: O(n log n) or O(n)
+        examples: sorting, heaps, segment trees, two pointers
+      - size: n larger
+        fits: O(log n) or O(1)
+        examples: binary search, math formula
+    traps:
+      - The table assumes one test case. With t test cases, the total size is what counts
+      - Constant factors matter near the edges. O(n log n) with heavy constants can be slow at n = 10^6
+    instead:
+      - if: you still don't see an approach
+        target: pipeline
+    tags: [complexity, limits, constraints, big-o, fast-enough, tle, time-limit, stuck]

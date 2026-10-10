@@ -1,0 +1,891 @@
+# Part I, Basic techniques: chapters 1–5.
+# Leaf fields: id, section, label, name, alias?, lead, when[], how, time, space,
+# vars?, sketch?, traps[], instead[] {if, target}, tags[].
+# `time` is the total cost of the whole job and must be parseable (see CLAUDE.md).
+
+part:
+  id: basic
+  prefix: I
+  title: basic techniques
+
+chapters:
+  - id: ch01
+    prefix: "01"
+    title: introduction
+    section: CPH ch. 1
+    leaves:
+      - id: modular-arithmetic
+        section: CPH §1.3
+        label: answer is huge, print it mod m
+        name: modular arithmetic
+        lead: Take the remainder after every step so numbers never blow up.
+        when:
+          - The problem says to print the answer modulo 10^9 + 7
+          - Intermediate values would overflow 64-bit integers
+        how: >-
+          Sums, differences and products can be computed from the remainders alone:
+          `(a + b) % m == (a % m + b % m) % m`, and the same for `-` and `*`.
+          Reduce after each operation. Division is different; it needs a modular inverse.
+        time: O(1) per operation
+        space: O(1)
+        sketch: |
+          MOD = 10**9 + 7
+
+          def factorial_mod(n):
+              r = 1
+              for i in range(2, n + 1):
+                  r = r * i % MOD      # reduce every step
+              return r
+
+          # (a - b) % MOD is never negative in Python
+        traps:
+          - In C++ and Java, `(a - b) % m` can be negative. Add m before taking the remainder
+          - Python ints don't overflow, but reducing still keeps them small and fast
+          - You can't divide under a modulus. Multiply by the inverse instead
+        instead:
+          - if: you need to divide
+            target: mod-inverse
+          - if: you need x^k with a huge k
+            target: mod-pow
+        tags: [modulo, mod, big-numbers, overflow, 1e9+7, huge-answer]
+
+      - id: float-compare
+        section: CPH §1.3
+        label: comparing floating-point results
+        name: epsilon comparison
+        lead: Treat two floats as equal when they're within a small tolerance.
+        when:
+          - Your result comes from sqrt, division or trig and you test it with ==
+          - The output must be printed with a fixed number of decimals
+        how: >-
+          Instead of `a == b`, check `abs(a - b) < eps` with something like eps = 1e-9.
+          When the input is integral, prefer integer arithmetic: compare squared distances,
+          use cross products.
+        time: O(1)
+        space: O(1)
+        sketch: |
+          EPS = 1e-9
+
+          def same(a, b):
+              return abs(a - b) < EPS
+
+          print(0.1 + 0.2 == 0.3)        # False
+          print(same(0.1 + 0.2, 0.3))    # True
+          print(f"{2 ** 0.5:.6f}")       # 1.414214
+        traps:
+          - 0.1 + 0.2 == 0.3 is False in every language that uses IEEE doubles
+          - A fixed eps fails for huge values like 1e12. Use a relative tolerance there (`math.isclose`)
+          - Doubles hold integers exactly only up to 2^53
+        instead:
+          - if: the points have integer coordinates
+            target: cross-product
+        tags: [float, double, precision, epsilon, rounding, decimal, real-numbers]
+
+      - id: sum-formulas
+        section: CPH §1.5
+        label: sum of a series without a loop
+        name: sum formulas
+        lead: Closed forms for 1 + 2 + … + n, squares, and arithmetic or geometric series.
+        when:
+          - n is up to 10^18, so a loop is impossible
+          - You need the sum of an arithmetic or geometric progression
+        how: >-
+          1 + 2 + … + n = n(n+1)/2. Squares: 1² + … + n² = n(n+1)(2n+1)/6.
+          An arithmetic series of n terms from a to b sums to n(a+b)/2.
+          A geometric series a + ak + … + ak^(n−1) sums to a(k^n − 1)/(k − 1) when k ≠ 1.
+        time: O(1)
+        space: O(1)
+        sketch: |
+          def tri(n):              # 1 + 2 + ... + n
+              return n * (n + 1) // 2
+
+          def squares(n):          # 1^2 + 2^2 + ... + n^2
+              return n * (n + 1) * (2 * n + 1) // 6
+
+          def arith(a, b, n):      # n terms, first a, last b
+              return n * (a + b) // 2
+        traps:
+          - Under a modulus, dividing by 2 or 6 needs a modular inverse
+          - With fixed-width integers, n(n+1) can overflow before you divide
+        instead:
+          - if: you need the sum modulo a prime
+            target: mod-inverse
+        tags: [math, formula, series, sum, arithmetic, geometric, closed-form]
+
+  - id: ch02
+    prefix: "02"
+    title: time complexity
+    section: CPH ch. 2
+    leaves:
+      - id: kadane
+        section: CPH §2.4
+        label: max sum of a contiguous subarray
+        name: Kadane's algorithm
+        lead: One pass. At each index, keep the best sum of a subarray that ends there.
+        when:
+          - Values can be negative and you want the best contiguous stretch
+          - n is large (10^6 or more)
+        how: >-
+          Let `cur` be the largest sum of a subarray ending at the current index. It is either
+          the current value alone, or the current value added to the previous `cur`.
+          The answer is the largest `cur` seen.
+        time: O(n)
+        space: O(1)
+        vars: {n: 1000000}
+        sketch: |
+          def max_subarray(a):
+              best = cur = a[0]
+              for x in a[1:]:
+                  cur = max(x, cur + x)     # extend, or start fresh
+                  best = max(best, cur)
+              return best
+        traps:
+          - Starting best at 0 is wrong when every value is negative (unless an empty subarray counts)
+          - Trying all start and end pairs is O(n²), too slow past n ≈ 10^4
+        instead:
+          - if: all values are positive and you need a target sum
+            target: sliding-window
+          - if: you answer many queries over different ranges
+            target: prefix-sums
+        tags: [subarray, max-sum, contiguous, kadane, maximum-subarray]
+
+  - id: ch03
+    prefix: "03"
+    title: sorting
+    section: CPH ch. 3
+    leaves:
+      - id: sorting
+        section: CPH §3.1
+        label: order the data first
+        name: sorting
+        alias: merge sort
+        lead: Sort once in O(n log n), and many problems become a single scan.
+        when:
+          - Duplicates, closest values or groups become neighbors after sorting
+          - You'll binary search the data later
+        how: >-
+          Use the built-in sort (Timsort in Python, O(n log n) in the worst case).
+          After sorting, equal values are adjacent, the closest pair of numbers is adjacent,
+          and you can sweep from left to right.
+        time: O(n log n)
+        space: O(n)
+        vars: {n: 1000000}
+        sketch: |
+          a = [5, 2, 8, 2, 9]
+          a.sort()                               # [2, 2, 5, 8, 9]
+          has_dup = any(a[i] == a[i + 1] for i in range(len(a) - 1))
+          min_gap = min(a[i + 1] - a[i] for i in range(len(a) - 1))
+
+          order = sorted(range(len(a)), key=a.__getitem__)   # keep indices
+        traps:
+          - No comparison sort beats O(n log n)
+          - Sorting loses the original order. Sort indices if you need them later
+        instead:
+          - if: the keys are small integers
+            target: counting-sort
+          - if: you only need the k smallest or largest
+            target: heap
+        tags: [sort, order, sorted, duplicates, closest, merge-sort, timsort]
+
+      - id: counting-sort
+        section: CPH §3.1
+        label: sort small integer keys
+        name: counting sort
+        lead: Count each value, then write the values out in order. Linear when values are small.
+        when:
+          - Keys are integers in a small range 0..c (c up to about 10^7)
+          - You only need how many times each value occurs
+        how: >-
+          Make an array `cnt` of size c + 1 and count every key. Then walk `cnt` from 0 to c
+          and output each value `cnt[v]` times.
+        time: O(n + c)
+        space: O(c)
+        vars: {n: 1000000, c: 1000000}
+        sketch: |
+          def counting_sort(a, c):       # every x satisfies 0 <= x <= c
+              cnt = [0] * (c + 1)
+              for x in a:
+                  cnt[x] += 1
+              out = []
+              for v in range(c + 1):
+                  out.extend([v] * cnt[v])
+              return out
+        traps:
+          - Memory is O(c), so it's useless when values go up to 10^9
+          - To sort whole records by key, turn the counts into prefix sums and place each record stably
+        instead:
+          - if: values are large or not integers
+            target: sorting
+          - if: values are large but there are few distinct ones
+            target: coordinate-compression
+        tags: [sort, counting, integers, small-range, linear-sort, bucket, frequency]
+
+      - id: inversions
+        section: CPH §3.1
+        label: count out-of-order pairs
+        name: inversion count
+        alias: merge sort counting
+        lead: Count pairs i < j with a[i] > a[j] while merge sorting.
+        when:
+          - You need to know how far an array is from sorted
+          - You need the number of swaps bubble sort would make (it equals the inversion count)
+        how: >-
+          During the merge step, when an element from the right half is taken before the
+          remaining left elements, it forms an inversion with every one of them. Add that count.
+        time: O(n log n)
+        space: O(n)
+        vars: {n: 200000}
+        sketch: |
+          def sort_count(a):
+              if len(a) <= 1:
+                  return a, 0
+              m = len(a) // 2
+              left, x = sort_count(a[:m])
+              right, y = sort_count(a[m:])
+              out, inv, i, j = [], x + y, 0, 0
+              while i < len(left) and j < len(right):
+                  if left[i] <= right[j]:
+                      out.append(left[i]); i += 1
+                  else:
+                      out.append(right[j]); j += 1
+                      inv += len(left) - i  # right[j] < all of left[i:]
+              return out + left[i:] + right[j:], inv
+        traps:
+          - Use <= in the merge, so equal values are not counted as inversions
+          - The count can reach n(n−1)/2, about 2·10^10 for n = 2·10^5, which overflows 32-bit ints
+        instead:
+          - if: elements arrive online or the array changes
+            target: fenwick
+        tags: [inversions, out-of-order, pairs, bubble-sort, swaps, merge-sort, count]
+
+      - id: custom-order
+        section: CPH §3.2
+        label: sort by a custom rule
+        name: sort key
+        alias: comparator
+        lead: Sort by a key, or a tuple of keys, instead of writing a full comparison.
+        when:
+          - Order by one field, then break ties by another
+          - One field descending and another ascending
+        how: >-
+          Give sort a key function that returns a tuple; tuples compare field by field.
+          Negate a numeric field to reverse it. For a rule that can't be written as a key,
+          wrap a comparison function with `functools.cmp_to_key`.
+        time: O(n log n)
+        space: O(n)
+        vars: {n: 1000000}
+        sketch: |
+          people = [("ana", 31), ("bo", 25), ("cy", 31)]
+          people.sort(key=lambda p: (-p[1], p[0]))    # age desc, then name
+
+          from functools import cmp_to_key
+
+          def cmp(a, b):              # largest number from concatenation
+              if a + b > b + a:
+                  return -1           # a goes first
+              return 1 if a + b < b + a else 0
+
+          nums = ["3", "30", "34"]
+          nums.sort(key=cmp_to_key(cmp))             # ['34', '3', '30']
+        traps:
+          - A comparator must be consistent (if a < b and b < c then a < c), or the order is undefined
+          - Python's sort is stable, so you can also sort twice, by the secondary key first
+        instead:
+          - if: you then look things up in the sorted order
+            target: binary-search
+        tags: [sort, custom, comparator, key, tie-break, order-by, multi-key]
+
+      - id: binary-search
+        section: CPH §3.3
+        label: search sorted data
+        name: binary search
+        lead: Halve the range each step to find a value, or where it would go, in O(log n).
+        when:
+          - The data is sorted (or you can sort it once) and you answer many lookups
+          - You need the first element ≥ x, or how many elements are < x
+        how: >-
+          Keep a range that must contain the answer. Look at the middle and drop the half
+          that can't contain it. In Python, `bisect_left(a, x)` is the first index with
+          a[i] ≥ x and `bisect_right(a, x)` the first with a[i] > x.
+        time: O(q log n)
+        space: O(1)
+        vars: {n: 1000000, q: 1000000}
+        sketch: |
+          from bisect import bisect_left, bisect_right
+
+          a = [1, 3, 3, 7, 9]
+          i = bisect_left(a, 3)            # 1: first index with a[i] >= 3
+          found = i < len(a) and a[i] == 3
+          smaller = bisect_left(a, 7)      # 3 values are < 7
+          threes = bisect_right(a, 3) - bisect_left(a, 3)   # 2
+        traps:
+          - Off-by-one errors. Decide whether the upper bound is inclusive and stay consistent
+          - In C++ and Java, (lo + hi) / 2 can overflow. Use lo + (hi − lo) / 2
+          - Sorting first costs O(n log n). Worth it only if you search more than a few times
+        instead:
+          - if: what you search is a yes/no condition on the answer
+            target: answer-search
+          - if: you insert and delete while searching
+            target: ordered-set
+        tags: [binary-search, sorted, lookup, bisect, lower-bound, search, find]
+
+      - id: answer-search
+        section: CPH §3.3
+        label: smallest value that works
+        name: binary search on the answer
+        lead: If x working means x + 1 also works, binary search for the first x that works.
+        when:
+          - The problem asks for the minimum time, capacity or length such that something is possible
+          - Checking one candidate is easy but finding the best one directly is hard
+        how: >-
+          Write `ok(x)` that answers whether x is enough. It must be monotone: false, …, false,
+          true, …, true. Binary search over x for the first true. The total cost is the cost
+          of one `ok` call times the log of the range R.
+        time: O(n log R)
+        space: O(1)
+        vars: {n: 200000, R: 1e18}
+        sketch: |
+          def first_true(lo, hi, ok):       # ok(hi) must be True
+              while lo < hi:
+                  mid = (lo + hi) // 2
+                  if ok(mid):
+                      hi = mid
+                  else:
+                      lo = mid + 1
+              return lo
+
+          def min_capacity(weights, d):     # ship in order within d days
+              def ok(cap):                  # O(n) check
+                  days, load = 1, 0
+                  for w in weights:
+                      if load + w > cap:
+                          days, load = days + 1, 0
+                      load += w
+                  return days <= d
+              return first_true(max(weights), sum(weights), ok)
+        traps:
+          - If ok isn't monotone, the search returns garbage. Convince yourself first
+          - Pick the upper bound so that ok(hi) is surely true
+          - For real-valued answers, loop a fixed number of times (say 100) instead of while lo < hi
+        instead:
+          - if: the function rises and then falls
+            target: peak-search
+        tags: [binary-search, answer, minimize, maximize, monotone, feasibility, parametric]
+
+      - id: peak-search
+        section: CPH §3.3
+        label: peak of a rise-then-fall function
+        name: binary search on the slope
+        lead: Compare f(x) with f(x + 1) to tell which side the peak is on.
+        when:
+          - f strictly increases up to some point and then strictly decreases
+          - You need the maximum without evaluating every x
+        how: >-
+          If f(x) < f(x + 1), the peak is to the right of x. Otherwise it is at x or to its left.
+          That is a monotone condition, so binary search for the first x with f(x) > f(x + 1).
+        time: O(log R)
+        space: O(1)
+        vars: {R: 1e18}
+        sketch: |
+          def peak(lo, hi, f):     # f rises, then falls, on [lo, hi]
+              while lo < hi:
+                  mid = (lo + hi) // 2
+                  if f(mid) < f(mid + 1):
+                      lo = mid + 1     # still climbing
+                  else:
+                      hi = mid
+              return lo
+        traps:
+          - Flat stretches (f(x) == f(x + 1)) break it. It needs a strict rise and fall
+          - For real-valued x, use ternary search with a fixed number of iterations
+        instead:
+          - if: you want the first x where a yes/no test becomes true
+            target: answer-search
+        tags: [binary-search, peak, maximum, unimodal, ternary-search, bitonic]
+
+  - id: ch04
+    prefix: "04"
+    title: data structures
+    section: CPH ch. 4
+    leaves:
+      - id: hash-map
+        section: CPH §4.3
+        label: find by key, fast
+        name: hash map
+        alias: dict
+        lead: Store key → value pairs with O(1) average lookup and update.
+        when:
+          - You look things up by id, name or value many times
+          - Counting occurrences, grouping, memoizing
+        how: >-
+          Python's dict hashes the key to find its slot, so insert, lookup and delete are O(1)
+          on average and n operations cost O(n). Use `Counter` for counts and
+          `defaultdict(list)` for grouping.
+        time: O(n) average
+        space: O(n)
+        vars: {n: 1000000}
+        sketch: |
+          from collections import Counter, defaultdict
+
+          words = ["a", "b", "a"]
+          count = Counter(words)               # {'a': 2, 'b': 1}
+
+          groups = defaultdict(list)
+          for i, w in enumerate(words):
+              groups[w].append(i)              # {'a': [0, 2], 'b': [1]}
+
+          first_seen = {}
+          for i, w in enumerate(words):
+              first_seen.setdefault(w, i)
+        traps:
+          - There is no order by key, so you can't ask for the next larger key
+          - Keys must be hashable. Use tuples, not lists
+          - The worst case is O(n) per operation with adversarial keys (rare outside hacking rounds)
+        instead:
+          - if: you need the nearest key above or below
+            target: ordered-set
+          - if: the keys are small integers
+            target: counting-sort
+        tags: [hash, map, dict, lookup, key-value, count, group, memo, dictionary]
+
+      - id: hash-set
+        section: CPH §4.2
+        label: have I seen this before?
+        name: hash set
+        alias: set
+        lead: Membership tests in O(1) on average.
+        when:
+          - Detecting duplicates, visited states, or whether x exists
+          - You don't need order or counts
+        how: >-
+          Python's set stores keys only. `x in s`, `s.add(x)` and `s.discard(x)` are O(1) on
+          average. Set operations (&, |, -) take time linear in the sizes.
+        time: O(n) average
+        space: O(n)
+        vars: {n: 1000000}
+        sketch: |
+          def first_repeat(items):
+              seen = set()
+              for x in items:
+                  if x in seen:
+                      return x
+                  seen.add(x)
+              return None
+        traps:
+          - x in some_list is O(n). Convert to a set first
+          - Sets drop order and duplicates
+        instead:
+          - if: you also need counts
+            target: hash-map
+          - if: you need sorted order or neighbors
+            target: ordered-set
+        tags: [set, hash, seen, visited, duplicates, membership, unique, distinct, exists]
+
+      - id: ordered-set
+        section: CPH §4.4
+        label: nearest key above or below
+        name: ordered set
+        alias: balanced BST
+        lead: Keep keys sorted under inserts and deletes, and find neighbors in O(log n).
+        when:
+          - You need the smallest element ≥ x while the elements keep changing
+          - You need both fast updates and sorted order
+        how: >-
+          C++ set and Java TreeSet are balanced trees with O(log n) insert, delete and
+          lower_bound. Python has no built-in one; `sortedcontainers.SortedList` offers the
+          same operations at about O(log n) each.
+        time: O(n log n)
+        space: O(n)
+        vars: {n: 200000}
+        sketch: |
+          from sortedcontainers import SortedList   # pip install sortedcontainers
+
+          s = SortedList([10, 30, 20])
+          s.add(25)
+          i = s.bisect_left(22)
+          above = s[i] if i < len(s) else None      # 25, the smallest >= 22
+          below = s[i - 1] if i > 0 else None       # 20, the largest < 22
+          s.remove(30)
+        traps:
+          - bisect.insort on a plain list is O(n) per insert because it shifts elements
+          - Removing a value that isn't there raises an error
+        instead:
+          - if: you also need the rank of an element
+            target: sorted-set
+          - if: the data never changes
+            target: binary-search
+        tags: [ordered-set, treeset, bst, sorted, neighbor, successor, predecessor, lower-bound, floor, ceiling]
+
+      - id: heap
+        section: CPH §4.5
+        label: top-k from a stream
+        name: heap
+        alias: priority queue
+        lead: Keep only the k best while data streams in.
+        when:
+          - Items keep arriving and you only need the k largest (or smallest)
+          - You keep asking "what's the current max or min?"
+        how: >-
+          Keep a `min-heap` of size k. Push each item. If it grows past k, pop the smallest.
+          Whatever is left is your top k.
+        time: O(n log k)
+        space: O(k)
+        vars: {n: 10000000, k: 10}
+        sketch: |
+          import heapq
+
+          def top_k(stream, k):
+              heap = []                    # min-heap
+              for x in stream:
+                  heapq.heappush(heap, x)
+                  if len(heap) > k:
+                      heapq.heappop(heap)  # drop the smallest
+              return sorted(heap, reverse=True)
+        traps:
+          - Sorting everything first costs O(n log n) time and O(n) memory
+          - For the k largest, keep a min-heap so the smallest gets evicted
+          - A heap isn't sorted. Sort the k items at the end
+        instead:
+          - if: scores change after they're added
+            target: sorted-set
+          - if: it's one fixed array, not a stream
+            target: quickselect
+        tags: [leaderboard, top-k, heap, priority-queue, max, min, stream, largest, smallest, best]
+
+      - id: sorted-set
+        section: CPH §4.5
+        label: live ranking with updates
+        name: sorted set
+        alias: order-statistic tree
+        lead: A sorted set that also answers "what rank is this?" and "who is k-th?".
+        when:
+          - Scores change after they're added and you need ranks
+          - Leaderboards, or the k-th smallest element so far
+        how: >-
+          Store (score, id) pairs. To change a score, remove the old pair and add the new one.
+          A rank is the number of elements before a pair; the k-th element is an index.
+          C++ uses a policy-based tree; in Python, `SortedList` supports indexing and bisect.
+        time: O((n + q) log n)
+        space: O(n)
+        vars: {n: 100000, q: 100000}
+        sketch: |
+          from sortedcontainers import SortedList
+
+          board = SortedList()        # (-score, player), best first
+          score = {}
+
+          def update(player, s):
+              if player in score:
+                  board.remove((-score[player], player))
+              score[player] = s
+              board.add((-s, player))
+
+          def rank(player):           # 0 = best
+              return board.index((-score[player], player))
+
+          def kth(k):
+              return board[k][1]
+        traps:
+          - Keep a dict of current scores so you can remove the old pair
+          - Store -score so the best comes first
+          - Include the id in each pair so equal scores stay distinct
+        instead:
+          - if: you only need the k best and scores never change
+            target: heap
+          - if: scores are small integers
+            target: fenwick
+        tags: [leaderboard, ranking, rank, order-statistics, kth, sorted-set, scores, updates]
+
+      - id: stack
+        section: CPH §4.5
+        label: undo, nesting, most recent first
+        name: stack
+        lead: Last in, first out. Push and pop at one end in O(1).
+        when:
+          - Matching brackets, undo history, evaluating expressions
+          - Depth-first search without recursion
+        how: >-
+          A Python list is a stack. `append` pushes, `pop()` removes the most recent item and
+          `[-1]` peeks at it.
+        time: O(n)
+        space: O(n)
+        vars: {n: 1000000}
+        sketch: |
+          def balanced(s):            # s contains only brackets
+              pairs = {")": "(", "]": "[", "}": "{"}
+              st = []
+              for c in s:
+                  if c in "([{":
+                      st.append(c)
+                  elif not st or st.pop() != pairs[c]:
+                      return False
+              return not st
+        traps:
+          - Popping from an empty stack. Check first
+          - list.pop(0) is O(n). That's a queue job
+        instead:
+          - if: you need first in, first out
+            target: queue
+          - if: you need the nearest smaller element
+            target: monotonic-stack
+        tags: [stack, lifo, undo, brackets, parentheses, nesting, recursion]
+
+      - id: queue
+        section: CPH §4.5
+        label: process in arrival order
+        name: queue
+        alias: deque
+        lead: First in, first out, with O(1) operations at both ends.
+        when:
+          - Handling jobs in the order they arrive
+          - Pushing or popping at both ends
+        how: >-
+          `collections.deque` supports append, appendleft, pop and popleft in O(1).
+          Use popleft for a first-in, first-out queue.
+        time: O(n)
+        space: O(n)
+        vars: {n: 1000000}
+        sketch: |
+          from collections import deque
+
+          q = deque()
+          q.append("job1")
+          q.append("job2")
+          first = q.popleft()          # "job1"
+          q.appendleft("urgent")       # jump the line
+          recent = deque(maxlen=3)     # keeps only the last 3 items
+        traps:
+          - list.pop(0) is O(n). Use a deque
+          - Indexing into the middle of a deque is O(n)
+        instead:
+          - if: the most urgent item should go first
+            target: heap
+          - if: you want the fewest steps through a graph
+            target: bfs
+        tags: [queue, fifo, deque, arrival, order, buffer, both-ends]
+
+      - id: bitset
+        section: CPH §4.5
+        label: many yes/no flags at once
+        name: bitset
+        lead: Pack flags into machine words and process 64 of them per operation.
+        when:
+          - Subset-sum style DP over booleans
+          - Intersecting large sets of small integers
+        how: >-
+          A Python int works as a bitset: bit i is flag i. Shifts, &, | and ^ act on whole
+          words at once, so n operations on m bits cost about n·m/64.
+        time: O(n * m / 64)
+        space: O(m / 64)
+        vars: {n: 1000, m: 100000}
+        sketch: |
+          def possible_sums(weights, limit):
+              reach = 1                          # bit s set = sum s is reachable
+              mask = (1 << (limit + 1)) - 1
+              for w in weights:
+                  reach |= (reach << w) & mask
+              return [s for s in range(limit + 1) if reach >> s & 1]
+        traps:
+          - The speedup is a constant factor of about 64, not a better complexity
+          - Python ints are immutable, so every operation builds a new number. Still fast for big masks
+        instead:
+          - if: the set has at most about 20 elements
+            target: bitmask-set
+        tags: [bitset, bits, flags, boolean, subset-sum, bit-parallel, words]
+
+  - id: ch05
+    prefix: "05"
+    title: complete search
+    section: CPH ch. 5
+    leaves:
+      - id: subsets
+        section: CPH §5.1
+        label: try every subset
+        name: subset enumeration
+        lead: Loop over all 2^n subsets, each one a bitmask.
+        when:
+          - n ≤ 20 and you must check every combination
+          - Choosing a group of items that satisfies some condition
+        how: >-
+          Each number `mask` from 0 to 2^n − 1 is a subset: item i is in it when bit i is set.
+          Checking one subset is O(n), so the total is O(2^n · n).
+        time: O(2^n * n)
+        space: O(n)
+        vars: {n: 20}
+        sketch: |
+          def best_subset(items, ok, value):
+              n = len(items)
+              best = None
+              for mask in range(1 << n):
+                  chosen = [items[i] for i in range(n) if mask >> i & 1]
+                  if ok(chosen) and (best is None or value(chosen) > value(best)):
+                      best = chosen
+              return best
+        traps:
+          - 2^25 is already 3·10^7 subsets. Past n ≈ 25 this is too slow
+          - Python is slower than C++. Aim for n ≤ 20
+        instead:
+          - if: n is around 40
+            target: meet-in-middle
+          - if: subsets share overlapping subproblems
+            target: bitmask-dp
+        tags: [subsets, brute-force, bitmask, combinations, all-subsets, complete-search, power-set]
+
+      - id: permutations
+        section: CPH §5.2
+        label: try every ordering
+        name: permutations
+        lead: Generate all n! orders and check each one.
+        when:
+          - n ≤ 10 and the answer depends on order
+          - Small scheduling or routing problems
+        how: >-
+          `itertools.permutations` yields each ordering once, in lexicographic order if the
+          input is sorted. Checking one costs O(n), so the total is O(n! · n).
+        time: O(n! * n)
+        space: O(n)
+        vars: {n: 9}
+        sketch: |
+          from itertools import permutations
+
+          def shortest_route(dist):         # visit every city, start at 0
+              n = len(dist)
+              best = float("inf")
+              for p in permutations(range(1, n)):
+                  route = (0,) + p
+                  cost = sum(dist[route[i]][route[i + 1]] for i in range(n - 1))
+                  best = min(best, cost)
+              return best
+        traps:
+          - 11! is about 4·10^7 and 12! about 4.8·10^8. Past n ≈ 11 this is too slow
+          - With repeated values, itertools yields repeated orderings
+        instead:
+          - if: n is up to about 20
+            target: bitmask-dp
+        tags: [permutations, orderings, brute-force, arrangements, tsp, complete-search]
+
+      - id: backtracking
+        section: CPH §5.3
+        label: explore every option
+        name: backtracking
+        lead: Build a solution step by step, and undo the last choice when it can't work.
+        when:
+          - Counting or listing every valid arrangement (n-queens, sudoku, word search)
+          - Each choice limits the later choices
+        how: >-
+          Recursively place one piece at a time. Before going deeper, check that the partial
+          solution is still valid, and return at once if not. After the recursive call, undo
+          the choice.
+        time: O(n!) worst case
+        space: O(n)
+        vars: {n: 10}
+        sketch: |
+          def n_queens(n):
+              cols, d1, d2 = set(), set(), set()
+
+              def place(r):
+                  if r == n:
+                      return 1
+                  count = 0
+                  for c in range(n):
+                      if c in cols or r + c in d1 or r - c in d2:
+                          continue
+                      cols.add(c); d1.add(r + c); d2.add(r - c)
+                      count += place(r + 1)
+                      cols.remove(c); d1.remove(r + c); d2.remove(r - c)   # undo
+                  return count
+
+              return place(0)
+        traps:
+          - Forgetting to undo the choice
+          - Checking validity only at the end, instead of at each step, is far slower
+          - Python's recursion limit is 1000. Raise it with sys.setrecursionlimit for deep searches
+        instead:
+          - if: the same partial states repeat
+            target: dynamic-programming
+          - if: it's correct but too slow
+            target: pruning
+        tags: [backtracking, recursion, brute-force, n-queens, sudoku, search, explore, combinations]
+
+      - id: pruning
+        section: CPH §5.4
+        label: search too slow, cut dead branches
+        name: pruning
+        alias: branch and bound
+        lead: Stop exploring a branch as soon as you can prove it won't help.
+        when:
+          - Backtracking works but is too slow
+          - You can tell early that a partial solution is hopeless or can't beat the best one
+        how: >-
+          At each step, stop if the cost so far plus an optimistic estimate of the rest
+          already reaches the best answer, or if the remaining resources can't finish the job.
+          Skip states that mirror ones you've already explored. Try promising choices first
+          so a good bound is found early. With b choices per step and depth d, the worst case
+          stays O(b^d).
+        time: O(b^d) worst case
+        space: O(d)
+        vars: {b: 4, d: 12}
+        sketch: |
+          best = float("inf")
+
+          def search(state, cost):
+              global best
+              if cost + lower_bound(state) >= best:   # can't beat best: prune
+                  return
+              if is_complete(state):
+                  best = cost
+                  return
+              # try the cheapest moves first
+              for move, c in sorted(moves(state), key=lambda m: m[1]):
+                  search(apply(state, move), cost + c)
+        traps:
+          - Pruning rarely improves the worst case. Measure on the largest input
+          - The estimate of the remaining cost must never be too high, or you cut real answers
+        instead:
+          - if: the same states repeat
+            target: dynamic-programming
+          - if: n is about 40 and the search splits into two halves
+            target: meet-in-middle
+        tags: [pruning, branch-and-bound, backtracking, optimization, speedup, search, symmetry]
+
+      - id: meet-in-middle
+        section: CPH §5.5
+        label: n ≈ 40, too big for 2^n
+        name: meet in the middle
+        lead: Split the input in half, enumerate each half, then combine the two lists.
+        when:
+          - n is up to about 40 and the answer is a subset
+          - Subset sum, such as whether some subset sums to exactly x
+        how: >-
+          List all 2^(n/2) subset sums of each half and sort one list. For each sum s in the
+          other list, binary search for x − s. The total is O(2^(n/2) · n).
+        time: O(2^(n/2) * n)
+        space: O(2^(n/2))
+        vars: {n: 40}
+        sketch: |
+          from bisect import bisect_left
+
+          def subset_sums(a):
+              sums = [0]
+              for x in a:
+                  sums += [s + x for s in sums]
+              return sums
+
+          def has_subset_sum(a, x):
+              half = len(a) // 2
+              left = subset_sums(a[:half])
+              right = sorted(subset_sums(a[half:]))
+              for s in left:
+                  i = bisect_left(right, x - s)
+                  if i < len(right) and right[i] == x - s:
+                      return True
+              return False
+        traps:
+          - Memory grows as 2^(n/2). About 10^6 sums per half (n = 40) is fine, 3·10^7 is not
+          - Handle the empty subset on both sides; it's the 0 in each list
+        instead:
+          - if: the values are small
+            target: knapsack
+          - if: n ≤ 20
+            target: subsets
+        tags: [meet-in-the-middle, subset-sum, split, halves, n-40, exponential]

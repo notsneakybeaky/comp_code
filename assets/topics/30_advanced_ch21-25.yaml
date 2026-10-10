@@ -1,0 +1,889 @@
+# Part III, Advanced topics: chapters 21–25.
+
+part:
+  id: advanced
+  prefix: III
+  title: advanced topics
+
+chapters:
+  - id: ch21
+    prefix: "21"
+    title: number theory
+    section: CPH ch. 21
+    leaves:
+      - id: trial-division
+        section: CPH §21.1
+        label: is n prime? factor n
+        name: trial division
+        lead: Try divisors up to √n. Whatever is left over at the end is a prime factor.
+        when:
+          - Factoring one number up to about 10^12
+          - Testing whether n is prime
+        how: >-
+          For d = 2, 3, 4, … while d·d ≤ n, divide out d as many times as possible. If n > 1
+          at the end, what remains is prime. Checking up to √n is enough because a composite n
+          always has a factor no bigger than √n.
+        time: O(√n)
+        space: O(log n)
+        vars: {n: 1e12}
+        sketch: |
+          import math
+
+          def factorize(n):
+              factors = []
+              d = 2
+              while d * d <= n:
+                  while n % d == 0:
+                      factors.append(d)
+                      n //= d
+                  d += 1
+              if n > 1:
+                  factors.append(n)
+              return factors
+
+          def is_prime(n):
+              return n >= 2 and all(n % d for d in range(2, math.isqrt(n) + 1))
+        traps:
+          - To factor many numbers up to 10^7, sieve once instead
+          - Use math.isqrt, not n ** 0.5, for big n (float rounding)
+        instead:
+          - if: you need all primes up to n, or to factor many small numbers
+            target: sieve
+          - if: you need how many numbers are coprime to n
+            target: totient
+        tags: [prime, factorize, factors, divisors, trial-division, primality, sqrt]
+
+      - id: sieve
+        section: CPH §21.1
+        label: all primes up to n
+        name: sieve of Eratosthenes
+        lead: Cross out the multiples of each prime. What remains is prime.
+        when:
+          - You need every prime up to about 10^7
+          - Factoring many numbers quickly, by storing each number's smallest prime factor
+        how: >-
+          Mark every number as prime. For each p with p·p ≤ n that is still marked, unmark
+          p·p, p·p + p, and so on. Storing the smallest prime factor instead of a flag lets you
+          factor any x ≤ n in O(log x).
+        time: O(n log log n)
+        space: O(n)
+        vars: {n: 1e7}
+        sketch: |
+          def sieve(n):                         # n >= 1
+              is_p = bytearray([1]) * (n + 1)
+              is_p[0:2] = b"\x00\x00"
+              p = 2
+              while p * p <= n:
+                  if is_p[p]:
+                      is_p[p * p::p] = bytes(len(range(p * p, n + 1, p)))
+                  p += 1
+              return [i for i in range(n + 1) if is_p[i]]
+        traps:
+          - A list of Python bools for 10^8 numbers is huge. Use a bytearray
+          - Start crossing out at p·p, not 2p
+        instead:
+          - if: you only need to factor one big number
+            target: trial-division
+        tags: [sieve, primes, eratosthenes, prime-list, smallest-prime-factor, spf]
+
+      - id: gcd
+        section: CPH §21.1
+        label: greatest common divisor / lcm
+        name: Euclid's algorithm
+        lead: gcd(a, b) = gcd(b, a mod b), which takes O(log n) steps.
+        when:
+          - Reducing fractions, finding common periods, checking whether numbers are coprime
+          - The lcm of several numbers
+        how: >-
+          Replace (a, b) by (b, a mod b) until b is 0; a is then the gcd. Compute the lcm as
+          a / gcd(a, b) · b. Python has `math.gcd` and `math.lcm`.
+        time: O(log n)
+        space: O(1)
+        vars: {n: 1e18}
+        sketch: |
+          import math
+
+          def gcd(a, b):
+              while b:
+                  a, b = b, a % b
+              return a
+
+          def lcm(a, b):
+              return a // gcd(a, b) * b      # divide first to keep it small
+
+          math.gcd(12, 18), math.lcm(4, 6)   # (6, 12)
+        traps:
+          - The lcm grows fast. With fixed-width ints, divide before multiplying
+          - gcd(0, x) is x
+        instead:
+          - if: you also need x and y with ax + by = gcd(a, b)
+            target: ext-gcd
+        tags: [gcd, lcm, euclid, divisor, coprime, fraction, common]
+
+      - id: totient
+        section: CPH §21.1
+        label: count numbers coprime to n
+        name: Euler's totient
+        lead: φ(n) = n · Π(1 − 1/p) over the distinct primes p that divide n.
+        when:
+          - How many of 1..n share no factor with n
+          - Reducing exponents under a modulus (x^φ(m) ≡ 1 mod m when gcd(x, m) = 1)
+        how: >-
+          Factor n by trial division. For each distinct prime p, do `result -= result // p`.
+          To get φ for every number up to n at once, use a sieve-style loop.
+        time: O(√n)
+        space: O(1)
+        vars: {n: 1e12}
+        sketch: |
+          def phi(n):
+              result = n
+              p = 2
+              while p * p <= n:
+                  if n % p == 0:
+                      while n % p == 0:
+                          n //= p
+                      result -= result // p
+                  p += 1
+              if n > 1:
+                  result -= result // n
+              return result
+        traps:
+          - φ(1) is 1
+          - Apply each prime once, not once per power of it
+        instead:
+          - if: you need the factors themselves
+            target: trial-division
+          - if: you need x^k mod m
+            target: mod-pow
+        tags: [totient, phi, euler, coprime, number-theory, count]
+
+      - id: mod-pow
+        section: CPH §21.2
+        label: x^k mod m for a huge k
+        name: fast exponentiation
+        alias: binary exponentiation
+        lead: Square and multiply, for O(log k) multiplications.
+        when:
+          - k is up to 10^18
+          - Modular inverses with a prime modulus
+        how: >-
+          x^k = (x^(k/2))² when k is even, and x · x^(k−1) when it's odd. Iteratively, walk the
+          bits of k: square x at each step and multiply it into the result when the bit is 1.
+          Python's built-in `pow(x, k, m)` does exactly this.
+        time: O(log k)
+        space: O(1)
+        vars: {k: 1e18}
+        sketch: |
+          def power(x, k, m):
+              result = 1 % m
+              x %= m
+              while k:
+                  if k & 1:
+                      result = result * x % m
+                  x = x * x % m
+                  k >>= 1
+              return result
+
+          pow(3, 10**18, 10**9 + 7)          # the built-in does the same
+        traps:
+          - In C++, multiplying two numbers below 10^9 + 7 needs 64-bit ints
+          - With m = 1, start from 1 % m so the answer is 0
+        instead:
+          - if: you need to divide
+            target: mod-inverse
+          - if: you need the n-th term of a recurrence
+            target: matrix-power
+        tags: [pow, power, exponentiation, modular, fast-pow, binary-exponentiation, mod]
+
+      - id: mod-inverse
+        section: CPH §21.2
+        label: divide under a modulus
+        name: modular inverse
+        lead: The inverse of x mod m exists when gcd(x, m) = 1. For a prime m it's x^(m−2).
+        when:
+          - The answer is a fraction a / b, printed modulo a prime
+          - Binomial coefficients modulo p
+        how: >-
+          For a prime m, Fermat's little theorem says x^(m−1) ≡ 1, so x^(m−2) is the inverse.
+          For any m coprime to x, use the extended Euclidean algorithm. In Python 3.8+,
+          `pow(x, -1, m)` does it.
+        time: O(log m)
+        space: O(1)
+        vars: {m: 1e9}
+        sketch: |
+          MOD = 10**9 + 7
+
+          def inv(x):                       # MOD is prime
+              return pow(x, MOD - 2, MOD)
+
+          five_thirds = 5 * inv(3) % MOD
+          assert five_thirds * 3 % MOD == 5
+          inv_any = pow(3, -1, 10)          # 7; works for any coprime modulus
+        traps:
+          - No inverse exists when gcd(x, m) > 1 (pow raises ValueError)
+          - Fermat's trick only works for a prime modulus
+        instead:
+          - if: the modulus isn't prime
+            target: ext-gcd
+          - if: you need many binomial coefficients
+            target: binomial
+        tags: [inverse, modular-inverse, division, fermat, mod, fraction, prime]
+
+      - id: ext-gcd
+        section: CPH §21.3
+        label: solve ax + by = c in integers
+        name: extended Euclid
+        alias: Diophantine equation
+        lead: Find x and y with ax + by = gcd(a, b), then scale. A solution exists only if the gcd divides c.
+        when:
+          - Linear equations that need integer solutions
+          - A modular inverse when the modulus isn't prime
+        how: >-
+          Extended Euclid returns (g, x, y) with ax + by = g. If g divides c, multiply x and y
+          by c / g. Every solution is x + k·(b/g), y − k·(a/g) for some integer k.
+        time: O(log n)
+        space: O(log n)
+        vars: {n: 1e18}
+        sketch: |
+          def ext_gcd(a, b):
+              if b == 0:
+                  return a, 1, 0
+              g, x, y = ext_gcd(b, a % b)
+              return g, y, x - (a // b) * y
+
+          def solve(a, b, c):               # one solution of ax + by = c, or None
+              g, x, y = ext_gcd(a, b)
+              if c % g:
+                  return None
+              return x * (c // g), y * (c // g)
+        traps:
+          - The recursion is only O(log n) deep, so it's safe in Python
+          - With negative a or b, solve for the absolute values and fix the signs afterward
+        instead:
+          - if: the modulus is prime
+            target: mod-inverse
+          - if: you have several congruences
+            target: crt
+        tags: [extended-euclid, diophantine, bezout, gcd, linear-equation, inverse, integers]
+
+      - id: crt
+        section: CPH §21.3
+        label: x ≡ a (mod m) for several moduli
+        name: Chinese remainder theorem
+        alias: CRT
+        lead: Merge the congruences two at a time into one congruence modulo their lcm.
+        when:
+          - Several cyclic conditions, like every 3 days at offset 2 and every 5 days at offset 3
+          - Rebuilding a number from its remainders
+        how: >-
+          For coprime moduli there is exactly one solution modulo their product. To merge
+          x ≡ a1 (mod m1) with x ≡ a2 (mod m2), write x = a1 + m1·t and solve
+          m1·t ≡ a2 − a1 (mod m2) with an inverse. The version below also handles moduli that
+          aren't coprime. With k congruences and M the final modulus, it's O(k log M).
+        time: O(k log M)
+        space: O(1)
+        vars: {k: 100000, M: 1e18}
+        sketch: |
+          def crt(rems, mods):              # (x, lcm of mods), or None
+              x, m = 0, 1
+              for a, mi in zip(rems, mods):
+                  g, p, _ = ext_gcd(m, mi)      # from the extended Euclid card
+                  if (a - x) % g:
+                      return None
+                  t = (a - x) // g * p % (mi // g)
+                  x += m * t
+                  m = m // g * mi
+                  x %= m
+              return x, m
+
+          crt([2, 3], [3, 5])               # (8, 15)
+        traps:
+          - When the moduli aren't coprime, a solution may not exist. Check (a − x) % g
+          - The combined modulus grows fast. Python ints cope; fixed-width ints overflow
+        instead:
+          - if: there is just one congruence to solve
+            target: mod-inverse
+        tags: [crt, chinese-remainder, congruence, modular, system, remainders, cycles]
+
+  - id: ch22
+    prefix: "22"
+    title: combinatorics
+    section: CPH ch. 22
+    leaves:
+      - id: binomial
+        section: CPH §22.1
+        label: n choose k mod p
+        name: binomial coefficients
+        lead: Precompute factorials and inverse factorials, and each C(n, k) is O(1).
+        when:
+          - Counting ways to choose k items from n, many times, modulo a prime
+          - Paths in a grid, C(r + c, r)
+        how: >-
+          C(n, k) = n! / (k! (n − k)!). Precompute fact[i] and inv_fact[i] up to N; then
+          C(n, k) = fact[n] · inv_fact[k] · inv_fact[n − k]. Without a prime modulus, Pascal's
+          rule C(n, k) = C(n−1, k−1) + C(n−1, k) works for n up to a few thousand.
+        time: O(N + q)
+        space: O(N)
+        vars: {N: 1000000, q: 1000000}
+        sketch: |
+          MOD = 10**9 + 7
+          N = 10**6
+          fact = [1] * (N + 1)
+          for i in range(1, N + 1):
+              fact[i] = fact[i - 1] * i % MOD
+          inv_fact = [1] * (N + 1)
+          inv_fact[N] = pow(fact[N], MOD - 2, MOD)
+          for i in range(N, 0, -1):
+              inv_fact[i - 1] = inv_fact[i] * i % MOD
+
+          def C(n, k):
+              if k < 0 or k > n:
+                  return 0
+              return fact[n] * inv_fact[k] % MOD * inv_fact[n - k] % MOD
+        traps:
+          - The modulus must be a prime larger than N, or the inverses don't exist
+          - Return 0 when k < 0 or k > n
+        instead:
+          - if: identical items go into boxes
+            target: stars-bars
+          - if: you're counting balanced structures
+            target: catalan
+        tags: [binomial, choose, combinations, ncr, factorial, pascal, counting]
+
+      - id: stars-bars
+        section: CPH §22.1
+        label: split k identical items into n boxes
+        name: stars and bars
+        lead: There are C(k + n − 1, n − 1) ways to put k identical items into n boxes.
+        when:
+          - Counting solutions of x1 + … + xn = k with every xi ≥ 0
+          - Sharing identical candies among children
+        how: >-
+          Write k stars and n − 1 bars in a row; each arrangement is one way to distribute.
+          If every box needs at least one item, it's C(k − 1, n − 1). For an upper limit per
+          box, combine it with inclusion–exclusion.
+        time: O(1) per query
+        space: O(1)
+        sketch: |
+          from math import comb
+
+          def distributions(k, n, at_least_one=False):
+              if at_least_one:
+                  return comb(k - 1, n - 1) if k >= n else 0
+              return comb(k + n - 1, n - 1)
+
+          distributions(5, 3)        # 21
+        traps:
+          - Distinct items are different. k distinct items in n boxes give n^k ways
+          - With a cap per box, subtract the bad cases with inclusion–exclusion
+        instead:
+          - if: each box has an upper limit
+            target: inclusion-exclusion
+          - if: you need many values modulo a prime
+            target: binomial
+        tags: [stars-and-bars, distribution, identical, boxes, compositions, combinations, counting]
+
+      - id: catalan
+        section: CPH §22.2
+        label: count balanced parentheses or BSTs
+        name: Catalan numbers
+        lead: C_n = C(2n, n) / (n + 1) counts many nested structures.
+        when:
+          - Balanced strings of n pairs of parentheses
+          - Binary trees with n nodes, triangulations of a polygon, grid paths that never cross the diagonal
+        how: >-
+          C_n = C(2n, n) / (n + 1), or by the recurrence C_0 = 1 and
+          C_(n+1) = sum of C_i · C_(n−i) for i = 0..n. The first values are 1, 1, 2, 5, 14, 42.
+        time: O(n)
+        space: O(1)
+        vars: {n: 100000}
+        sketch: |
+          from math import comb
+
+          def catalan(n):
+              return comb(2 * n, n) // (n + 1)
+
+          [catalan(i) for i in range(6)]    # [1, 1, 2, 5, 14, 42]
+        traps:
+          - Modulo a prime, divide by n + 1 with a modular inverse
+          - Check the first few values against a brute force before trusting that a problem is Catalan
+        instead:
+          - if: you need general binomial coefficients
+            target: binomial
+        tags: [catalan, parentheses, brackets, binary-trees, triangulation, dyck-path, counting]
+
+      - id: inclusion-exclusion
+        section: CPH §22.3
+        label: count with overlapping conditions
+        name: inclusion–exclusion
+        lead: Add the single sets, subtract the pairwise overlaps, add the triple overlaps, and so on.
+        when:
+          - Counting items that satisfy at least one of several conditions
+          - Counting items that avoid every bad condition (derangements, coprime counts)
+        how: >-
+          |A ∪ B ∪ C| = |A| + |B| + |C| − |A∩B| − |A∩C| − |B∩C| + |A∩B∩C|. In general, loop
+          over the non-empty subsets of the k conditions, adding the size of the intersection
+          for odd-sized subsets and subtracting it for even-sized ones.
+        time: O(2^k * k)
+        space: O(1)
+        vars: {k: 20}
+        sketch: |
+          from math import lcm
+
+          # how many of 1..n are divisible by at least one divisor
+          def count_divisible(n, divisors):
+              k, total = len(divisors), 0
+              for mask in range(1, 1 << k):
+                  l, bits = 1, 0
+                  for i in range(k):
+                      if mask >> i & 1:
+                          l = lcm(l, divisors[i])
+                          bits += 1
+                  total += n // l if bits % 2 else -(n // l)
+              return total
+        traps:
+          - There are 2^k terms, so it only works for small k
+          - Derangements have a direct recurrence, D(n) = (n − 1)(D(n − 1) + D(n − 2))
+        instead:
+          - if: the choices are independent, with nothing to correct
+            target: binomial
+        tags: [inclusion-exclusion, overlap, union, derangements, count, complement, sets]
+
+      - id: burnside
+        section: CPH §22.4
+        label: count up to rotation or symmetry
+        name: Burnside's lemma
+        lead: Distinct objects = the average number of colorings each symmetry leaves unchanged.
+        when:
+          - Necklaces, bracelets, or colorings that count as the same when rotated or reflected
+        how: >-
+          For each symmetry, count the colorings it leaves unchanged, then divide the total by
+          the number of symmetries. For a necklace of n beads in m colors under rotation,
+          rotating by k positions fixes m^gcd(k, n) colorings.
+        time: O(n log n)
+        space: O(1)
+        vars: {n: 1000000}
+        sketch: |
+          from math import gcd
+
+          def necklaces(n, m):           # rotations only
+              return sum(m ** gcd(k, n) for k in range(n)) // n
+
+          necklaces(4, 3)                # 24
+        traps:
+          - Include the identity (k = 0), which leaves every coloring unchanged
+          - With reflections too (bracelets), add those symmetries and divide by 2n
+        instead:
+          - if: there are no symmetries to factor out
+            target: binomial
+        tags: [burnside, symmetry, necklace, rotation, colorings, group, distinct, counting]
+
+      - id: cayley
+        section: CPH §22.5
+        label: number of labeled trees
+        name: Cayley's formula
+        lead: There are n^(n−2) different trees on n labeled nodes.
+        when:
+          - Counting the spanning trees of a complete graph
+          - Counting labeled trees (Prüfer codes give a one-to-one mapping)
+        how: >-
+          Every labeled tree matches exactly one Prüfer code, a sequence of n − 2 labels, and
+          there are n^(n−2) such sequences. For other graphs, count spanning trees with
+          Kirchhoff's theorem.
+        time: O(log n)
+        space: O(1)
+        vars: {n: 1e18}
+        sketch: |
+          MOD = 10**9 + 7
+
+          def labeled_trees(n):
+              return 1 if n <= 2 else pow(n, n - 2, MOD)
+        traps:
+          - It counts labeled trees. Counting tree shapes (unlabeled) is much harder
+          - n = 1 and n = 2 both give 1
+        instead:
+          - if: the graph isn't complete
+            target: kirchhoff
+        tags: [cayley, labeled-trees, prufer, spanning-trees, complete-graph, counting, trees]
+
+  - id: ch23
+    prefix: "23"
+    title: matrices
+    section: CPH ch. 23
+    leaves:
+      - id: matrix-power
+        section: CPH §23.2
+        label: n-th term of a recurrence, huge n
+        name: matrix exponentiation
+        lead: Write one step as a k × k matrix and raise it to the n-th power.
+        when:
+          - f(n) = c1·f(n−1) + … + ck·f(n−k) with n up to 10^18
+          - Fibonacci numbers modulo m for a huge n
+        how: >-
+          Keep the last k values in a vector; one step is a multiplication by a k × k matrix.
+          Fast exponentiation computes the n-th power with O(log n) multiplications of O(k³)
+          each.
+        time: O(k^3 log n)
+        space: O(k^2)
+        vars: {k: 2, n: 1e18}
+        sketch: |
+          MOD = 10**9 + 7
+
+          def mat_mul(A, B):
+              return [[sum(A[i][t] * B[t][j] for t in range(len(B))) % MOD
+                       for j in range(len(B[0]))] for i in range(len(A))]
+
+          def mat_pow(M, e):
+              R = [[int(i == j) for j in range(len(M))] for i in range(len(M))]
+              while e:
+                  if e & 1:
+                      R = mat_mul(R, M)
+                  M = mat_mul(M, M)
+                  e >>= 1
+              return R
+
+          def fib(n):                       # F(0) = 0, F(1) = 1
+              return mat_pow([[1, 1], [1, 0]], n)[0][1]
+        traps:
+          - k³ matters. A 100 × 100 matrix costs 10^6 per multiplication
+          - Reduce modulo m after every multiplication
+        instead:
+          - if: n is small enough to loop
+            target: dynamic-programming
+          - if: you count walks of length k in a graph
+            target: path-count-matrix
+        tags: [matrix, exponentiation, linear-recurrence, fibonacci, huge-n, fast-pow]
+
+      - id: path-count-matrix
+        section: CPH §23.3
+        label: count walks of exactly length k
+        name: adjacency matrix power
+        lead: Entry (a, b) of A^k counts the walks of exactly k edges from a to b.
+        when:
+          - The number of routes with exactly k steps, for a huge k
+          - The shortest walk with exactly k edges (use min-plus multiplication)
+        how: >-
+          Raise the adjacency matrix to the k-th power with fast exponentiation. Replacing
+          (×, +) by (+, min) in the multiplication gives the shortest walk with exactly k
+          edges instead.
+        time: O(n^3 log k)
+        space: O(n^2)
+        vars: {n: 100, k: 1e18}
+        sketch: |
+          def count_walks(A, k, a, b):
+              return mat_pow(A, k)[a][b]      # mat_pow from the recurrence card
+        traps:
+          - Walks may repeat nodes. This doesn't count simple paths
+          - n = 500 is already 1.25·10^8 operations per multiplication
+        instead:
+          - if: you need a linear recurrence
+            target: matrix-power
+        tags: [matrix, walks, paths, length-k, adjacency, exponentiation, count]
+
+      - id: kirchhoff
+        section: CPH §23.3
+        label: count spanning trees
+        name: Kirchhoff's theorem
+        alias: matrix-tree theorem
+        lead: The number of spanning trees is a determinant of the Laplacian with one row and column removed.
+        when:
+          - Counting the spanning trees of a given graph
+          - n is at most a few hundred
+        how: >-
+          Build the Laplacian L = D − A: degrees on the diagonal, −1 for each edge. Delete any
+          one row and the same column; the determinant of what's left is the number of
+          spanning trees. Compute it with Gaussian elimination in O(n³), using fractions or a
+          prime modulus.
+        time: O(n^3)
+        space: O(n^2)
+        vars: {n: 400}
+        sketch: |
+          from fractions import Fraction
+
+          def spanning_trees(n, edges):          # undirected
+              L = [[Fraction(0)] * n for _ in range(n)]
+              for u, v in edges:
+                  L[u][u] += 1; L[v][v] += 1
+                  L[u][v] -= 1; L[v][u] -= 1
+              M = [row[1:] for row in L[1:]]     # drop row 0 and column 0
+              det, m = Fraction(1), n - 1
+              for c in range(m):
+                  p = next((r for r in range(c, m) if M[r][c] != 0), None)
+                  if p is None:
+                      return 0
+                  if p != c:
+                      M[c], M[p] = M[p], M[c]
+                      det = -det
+                  det *= M[c][c]
+                  for r in range(c + 1, m):
+                      f = M[r][c] / M[c][c]
+                      for j in range(c, m):
+                          M[r][j] -= f * M[c][j]
+              return int(det)
+        traps:
+          - Fractions are slow for big n. Work modulo a prime with modular inverses instead
+          - Parallel edges count as different trees; self-loops are ignored
+        instead:
+          - if: the graph is complete
+            target: cayley
+        tags: [kirchhoff, matrix-tree, spanning-trees, laplacian, determinant, count]
+
+  - id: ch24
+    prefix: "24"
+    title: probability
+    section: CPH ch. 24
+    leaves:
+      - id: expectation
+        section: CPH §24.3
+        label: expected value of a sum
+        name: linearity of expectation
+        lead: E[X + Y] = E[X] + E[Y], even when X and Y depend on each other.
+        when:
+          - The expected number of something (fixed points, empty boxes, collisions)
+          - A complicated count that splits into yes/no indicators
+        how: >-
+          Write the quantity as a sum of indicators, each 1 if its event happens and 0
+          otherwise. The expected value is the sum of the events' probabilities; no
+          independence is needed.
+        time: O(n)
+        space: O(1)
+        vars: {n: 1000000}
+        sketch: |
+          # n balls thrown into n boxes at random: expected number of empty boxes
+          def expected_empty(n):
+              p_empty = (1 - 1 / n) ** n   # a given box gets no ball
+              return n * p_empty           # n indicators, each that likely
+
+          # a random permutation has n * (1/n) = 1 fixed point on average
+        traps:
+          - E[XY] = E[X]·E[Y] needs independence; linearity doesn't
+          - The expected value isn't the most likely value
+        instead:
+          - if: the process moves between states step by step
+            target: markov
+        tags: [expected-value, expectation, linearity, indicators, probability, average]
+
+      - id: markov
+        section: CPH §24.4
+        label: probabilities after k steps
+        name: Markov chain DP
+        lead: Keep a probability for each state and push it along the transitions, one step at a time.
+        when:
+          - A process moves randomly between states with known probabilities
+          - The chance of being in each state after k steps
+        how: >-
+          Start from the initial distribution. Each step, new[v] is the sum of old[u] · P(u → v).
+          That's O(n²) per step for n states, less with sparse transitions. For a huge k, use
+          matrix exponentiation instead.
+        time: O(k * n^2)
+        space: O(n)
+        vars: {k: 1000, n: 300}
+        sketch: |
+          def after_steps(P, start, k):        # P[u][v]: probability of u -> v
+              n = len(P)
+              dist = [0.0] * n
+              dist[start] = 1.0
+              for _ in range(k):
+                  new = [0.0] * n
+                  for u in range(n):
+                      if dist[u]:
+                          for v in range(n):
+                              new[v] += dist[u] * P[u][v]
+                  dist = new
+              return dist
+        traps:
+          - Every row of P must sum to 1
+          - For k up to 10^18, raise P to the k-th power instead
+        instead:
+          - if: k is huge
+            target: matrix-power
+        tags: [markov, probability, random-walk, states, transitions, dp, distribution]
+
+      - id: quickselect
+        section: CPH §24.5
+        label: k-th smallest in one array
+        name: quickselect
+        lead: Partition around a random pivot and continue in one side only.
+        when:
+          - The median or k-th smallest of a fixed array, once
+          - You don't need the whole array sorted
+        how: >-
+          Pick a random pivot and split the values into smaller, equal and larger. The k-th
+          value lies in exactly one of those parts, so continue only there. The parts shrink
+          geometrically on average, giving expected O(n).
+        time: O(n) average
+        space: O(n)
+        vars: {n: 10000000}
+        sketch: |
+          import random
+
+          def kth_smallest(a, k):            # k is 0-based
+              while True:
+                  pivot = random.choice(a)
+                  lo = [x for x in a if x < pivot]
+                  eq = [x for x in a if x == pivot]
+                  if k < len(lo):
+                      a = lo
+                  elif k < len(lo) + len(eq):
+                      return pivot
+                  else:
+                      k -= len(lo) + len(eq)
+                      a = [x for x in a if x > pivot]
+        traps:
+          - A fixed pivot, like the first element, is O(n²) on sorted input
+          - The worst case is still O(n²), just very unlikely with a random pivot
+        instead:
+          - if: the data streams in
+            target: heap
+          - if: you need many order statistics
+            target: sorting
+        tags: [quickselect, kth-smallest, median, selection, randomized, partition, order-statistic]
+
+      - id: freivalds
+        section: CPH §24.5
+        label: check A·B = C fast
+        name: Freivalds' algorithm
+        lead: Multiply both sides by a random vector. O(n²) per check instead of O(n³).
+        when:
+          - Verifying a matrix product that someone claims
+          - A randomized check is acceptable
+        how: >-
+          Pick a random 0/1 vector x and compute A(Bx) and Cx, each in O(n²). If they differ,
+          AB ≠ C for certain. If AB ≠ C, one trial catches it with probability at least 1/2,
+          so repeat t times.
+        time: O(t * n^2)
+        space: O(n)
+        vars: {t: 20, n: 1000}
+        sketch: |
+          import random
+
+          def mat_vec(M, x):
+              return [sum(r * v for r, v in zip(row, x)) for row in M]
+
+          def probably_equal(A, B, C, trials=20):
+              n = len(A)
+              for _ in range(trials):
+                  x = [random.randint(0, 1) for _ in range(n)]
+                  if mat_vec(A, mat_vec(B, x)) != mat_vec(C, x):
+                      return False             # certainly different
+              return True                      # wrong with probability <= 2^-20
+        traps:
+          - Equal is only probable; different is certain
+          - With floats, compare with a tolerance
+        tags: [freivalds, matrix, verification, randomized, probabilistic, check, multiplication]
+
+  - id: ch25
+    prefix: "25"
+    title: game theory
+    section: CPH ch. 25
+    leaves:
+      - id: win-lose
+        section: CPH §25.1
+        label: who wins? small state space
+        name: winning and losing states
+        lead: A state is winning if some move leads to a losing state.
+        when:
+          - Two players alternate, both play perfectly, and whoever can't move loses
+          - There are few enough states to store them all
+        how: >-
+          A state with no moves is losing. Any other state is winning exactly when at least
+          one move reaches a losing state. Fill the table from the end states upward, or
+          memoize. With S states and M moves each, that's O(S·M).
+        time: O(S * M)
+        space: O(S)
+        vars: {S: 1000000, M: 3}
+        sketch: |
+          # one pile of n; a move removes m sticks, for any m in moves
+          def winning_states(n, moves):
+              win = [False] * (n + 1)
+              for s in range(1, n + 1):
+                  win[s] = any(m <= s and not win[s - m] for m in moves)
+              return win
+
+          winning_states(10, [1, 3, 4])
+        traps:
+          - Check who wins when no move is possible; some games use the reverse rule
+          - If states can repeat (cycles), you need a different, backward analysis
+        instead:
+          - if: the game is several piles played together
+            target: grundy
+          - if: you may take any number from any pile
+            target: nim
+        tags: [game-theory, winning, losing, two-player, optimal-play, dp, states]
+
+      - id: nim
+        section: CPH §25.2
+        label: piles, take any amount from one
+        name: Nim
+        lead: The first player wins exactly when the xor of the pile sizes isn't 0.
+        when:
+          - Several piles, and a move removes any positive number of sticks from one pile
+          - Games that turn out to be Nim in disguise
+        how: >-
+          Let s be the xor of all pile sizes. If s = 0, every move makes it non-zero and the
+          opponent can bring it back to 0, so the position is losing. Otherwise reduce some
+          pile a to a xor s, which is possible for any pile where that value is smaller.
+        time: O(n)
+        space: O(1)
+        vars: {n: 1000000}
+        sketch: |
+          from functools import reduce
+          from operator import xor
+
+          def nim_move(piles):                 # None if the position is losing
+              s = reduce(xor, piles, 0)
+              if s == 0:
+                  return None
+              for i, a in enumerate(piles):
+                  if a ^ s < a:
+                      return i, a - (a ^ s)    # take this many from pile i
+        traps:
+          - In misère Nim (the last mover loses), the strategy only changes at the end, when every pile has size 0 or 1
+          - Restricted moves, like taking at most k, need Grundy numbers
+        instead:
+          - if: moves are restricted or several games combine
+            target: grundy
+        tags: [nim, xor, piles, game-theory, impartial, winning]
+
+      - id: grundy
+        section: CPH §25.3
+        label: several games at once
+        name: Sprague–Grundy
+        alias: nimbers
+        lead: Give every state a Grundy number. A sum of games is winning when their xor isn't 0.
+        when:
+          - The game splits into independent subgames, and each move is made in one of them
+          - Moves are restricted (take 1, 3 or 4), so plain Nim doesn't apply
+        how: >-
+          A state's Grundy number is the mex, the smallest non-negative integer not present,
+          of the Grundy numbers of the states it can move to. A losing state has Grundy
+          number 0. For a sum of games, xor their Grundy numbers.
+        time: O(S * M)
+        space: O(S)
+        vars: {S: 1000000, M: 3}
+        sketch: |
+          def grundy_table(n, moves):
+              g = [0] * (n + 1)
+              for s in range(1, n + 1):
+                  seen = {g[s - m] for m in moves if m <= s}
+                  x = 0
+                  while x in seen:
+                      x += 1
+                  g[s] = x                     # mex
+              return g
+
+          def first_player_wins(piles, moves):
+              g = grundy_table(max(piles), moves)
+              x = 0
+              for p in piles:
+                  x ^= g[p]
+              return x != 0
+        traps:
+          - The subgames must be truly independent
+          - Grundy numbers aren't win/lose flags. Only zero versus non-zero tells you who wins
+        instead:
+          - if: any number may be taken from a pile
+            target: nim
+          - if: there's only one game
+            target: win-lose
+        tags: [grundy, sprague-grundy, mex, nimber, game-theory, impartial, subgames, xor]

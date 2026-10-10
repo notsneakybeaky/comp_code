@@ -1,0 +1,1025 @@
+# Part I, Basic techniques: chapters 6–10.
+
+part:
+  id: basic
+  prefix: I
+  title: basic techniques
+
+chapters:
+  - id: ch06
+    prefix: "06"
+    title: greedy algorithms
+    section: CPH ch. 6
+    leaves:
+      - id: greedy
+        section: CPH §6.1
+        label: best pick each step
+        name: greedy
+        lead: Make the locally best choice and never look back, but only when you can prove it's safe.
+        when:
+          - Some choice is always safe; swapping it into any optimal solution never makes it worse
+          - The problem has a natural order (by end time, by ratio, by size)
+        how: >-
+          Sort by the right key, then take each item if it fits. The hard part is the proof:
+          show that an optimal solution can be changed to include your greedy choice without
+          getting worse. Then test against a brute force on small random inputs.
+        time: O(n log n)
+        space: O(n)
+        vars: {n: 1000000}
+        sketch: |
+          def min_coins_greedy(coins, x):  # fine for 1, 2, 5, 10, 20, ...
+              count = 0
+              for c in sorted(coins, reverse=True):
+                  count += x // c
+                  x %= c
+              return count if x == 0 else None
+
+          # wrong for coins {1, 3, 4} and x = 6: greedy 4+1+1, best 3+3
+        traps:
+          - Greedy coin change fails for coins {1, 3, 4} and x = 6
+          - A greedy that passes the samples can still be wrong. Compare with brute force
+        instead:
+          - if: greedy fails on some input
+            target: coin-change
+          - if: choices interact, so taking one changes the value of others
+            target: dynamic-programming
+        tags: [greedy, local-choice, exchange-argument, coins, sort, best-pick]
+
+      - id: interval-scheduling
+        section: CPH §6.2
+        label: most non-overlapping events
+        name: earliest end first
+        alias: interval scheduling
+        lead: Sort by end time and take every event that starts after the last chosen one ends.
+        when:
+          - Choose as many meetings, intervals or jobs as possible with no overlap
+          - Each event has a start and an end time
+        how: >-
+          Sort events by end time. Walk through them and take an event if it starts at or
+          after the end of the last one taken. Finishing as early as possible leaves the most
+          room for the rest.
+        time: O(n log n)
+        space: O(n)
+        vars: {n: 1000000}
+        sketch: |
+          def max_events(events):              # (start, end)
+              count, last_end = 0, float("-inf")
+              for s, e in sorted(events, key=lambda ev: ev[1]):
+                  if s >= last_end:          # use > if touching counts as overlap
+                      count += 1
+                      last_end = e
+              return count
+        traps:
+          - Sorting by start time or by length gives wrong answers
+          - Decide whether an event ending at 5 and one starting at 5 overlap
+        instead:
+          - if: events have different values and you maximize the total value
+            target: dynamic-programming
+          - if: you need the largest number of events at the same moment
+            target: event-sweep
+        tags: [intervals, scheduling, meetings, non-overlapping, activity-selection, events, greedy]
+
+      - id: deadlines
+        section: CPH §6.3
+        label: order tasks that score by deadline
+        name: shortest task first
+        lead: When each task scores its deadline minus its finish time, do them in order of duration.
+        when:
+          - Every task must be done, one at a time
+          - A task with deadline d that finishes at time x scores d − x, and you maximize the total
+        how: >-
+          The deadlines add up to the same total in any order, so only the finish times matter.
+          The sum of finish times is smallest when shorter tasks go first: swapping a longer
+          task in front of a shorter one only makes it bigger.
+        time: O(n log n)
+        space: O(n)
+        vars: {n: 1000000}
+        sketch: |
+          def best_score(tasks):              # (duration, deadline)
+              t = total = 0
+              for dur, dl in sorted(tasks):   # shortest first
+                  t += dur
+                  total += dl - t
+              return total
+        traps:
+          - Sorting by deadline looks natural here and is wrong
+          - This is for the scoring above. If late tasks are skipped instead, it's a different problem
+        instead:
+          - if: you choose which events to keep rather than their order
+            target: interval-scheduling
+        tags: [scheduling, tasks, deadlines, order, shortest-job-first, greedy, exchange]
+
+      - id: median
+        section: CPH §6.4
+        label: one point closest to all values
+        name: median
+        lead: The median minimizes the sum of absolute distances; the mean minimizes the squared ones.
+        when:
+          - Choose x to minimize the sum of |a_i − x|, like a meeting point on a line
+          - Make all values equal using +1 and −1 steps
+        how: >-
+          Sort and take the middle element; for even n, anything between the two middle ones
+          works. For squared distances, the best x is the average. With Manhattan distance on
+          a grid, solve x and y separately.
+        time: O(n log n)
+        space: O(n)
+        vars: {n: 1000000}
+        sketch: |
+          def min_total_distance(a):
+              a = sorted(a)
+              m = a[len(a) // 2]
+              return sum(abs(x - m) for x in a)
+
+          def min_squared(a):
+              mean = sum(a) / len(a)
+              return sum((x - mean) ** 2 for x in a)
+        traps:
+          - The mean is wrong for absolute distances
+          - If x must be an integer for squared distances, check the floor and the ceiling of the mean
+        instead:
+          - if: you only need the median, not a sorted copy
+            target: quickselect
+        tags: [median, mean, closest, minimize-distance, meeting-point, absolute, equalize]
+
+      - id: huffman
+        section: CPH §6.5
+        label: shortest prefix-free code
+        name: Huffman coding
+        lead: Repeatedly merge the two least frequent symbols.
+        when:
+          - Compressing symbols with known frequencies
+          - Merging piles where each merge costs the sum of the two piles, in any order
+        how: >-
+          Put every frequency in a min-heap. Pop the two smallest, merge them into one node
+          worth their sum and push it back, until one tree remains. A symbol's code length is
+          its depth, and the total number of bits is the sum of all merge costs.
+        time: O(n log n)
+        space: O(n)
+        vars: {n: 1000000}
+        sketch: |
+          import heapq
+
+          def huffman_cost(freq):          # total bits = sum of merge costs
+              h = list(freq)
+              heapq.heapify(h)
+              cost = 0
+              while len(h) > 1:
+                  a, b = heapq.heappop(h), heapq.heappop(h)
+                  cost += a + b
+                  heapq.heappush(h, a + b)
+              return cost
+        traps:
+          - With a single symbol the loop never runs. Give it a 1-bit code if you need real codes
+          - If only neighboring piles may be merged, it's a different problem that needs DP
+        instead:
+          - if: only neighbors may be merged
+            target: dynamic-programming
+        tags: [huffman, compression, encoding, prefix-code, merge, piles, heap, greedy]
+
+  - id: ch07
+    prefix: "07"
+    title: dynamic programming
+    section: CPH ch. 7
+    leaves:
+      - id: dynamic-programming
+        section: CPH §7.1
+        label: overlapping subproblems
+        name: dynamic programming
+        alias: DP
+        lead: Solve each subproblem once, store it, and build bigger answers from smaller ones.
+        when:
+          - The brute force recomputes the same states many times
+          - The answer for a state depends only on a few smaller states
+        how: >-
+          Define the state (what you need to know), the transition (how a state follows from
+          smaller ones) and the base cases. Either memoize the recursion (top-down) or fill a
+          table in order (bottom-up). With S states and T transitions each, time is O(S·T).
+        time: O(S * T)
+        space: O(S)
+        vars: {S: 1000000, T: 10}
+        sketch: |
+          from functools import cache
+
+          @cache
+          def ways(n):                  # climb n stairs, 1 or 2 steps at a time
+              if n <= 1:
+                  return 1
+              return ways(n - 1) + ways(n - 2)
+
+          def ways_table(n):            # the same, bottom-up
+              dp = [1, 1] + [0] * max(0, n - 1)
+              for i in range(2, n + 1):
+                  dp[i] = dp[i - 1] + dp[i - 2]
+              return dp[n]
+        traps:
+          - A state that leaves out needed information gives wrong answers
+          - Deep recursion hits Python's limit. Prefer bottom-up for large n
+          - If a row only needs the previous row, keep two rows instead of the whole table
+        instead:
+          - if: some local choice is always safe
+            target: greedy
+          - if: you must list every solution, not count or optimize
+            target: backtracking
+        tags: [dp, dynamic-programming, memoization, overlapping, subproblems, recursion, table, optimize, count-ways]
+
+      - id: coin-change
+        section: CPH §7.1
+        label: fewest coins or ways to make a sum
+        name: coin change DP
+        lead: For each sum from 0 to x, combine the answers for smaller sums.
+        when:
+          - Coin values are arbitrary, so greedy fails
+          - You count the ways to form a sum
+        how: >-
+          `best[s] = min(best[s − c] + 1)` over coins c ≤ s, with best[0] = 0. To count
+          ordered ways, `ways[s] = sum(ways[s − c])`. To count combinations (order doesn't
+          matter), put the loop over coins outside the loop over sums.
+        time: O(n * x)
+        space: O(x)
+        vars: {n: 100, x: 1000000}
+        sketch: |
+          def min_coins(coins, x):
+              INF = float("inf")
+              best = [0] + [INF] * x
+              for s in range(1, x + 1):
+                  for c in coins:
+                      if c <= s and best[s - c] + 1 < best[s]:
+                          best[s] = best[s - c] + 1
+              return best[x] if best[x] < INF else -1
+
+          def count_combinations(coins, x, mod=10**9 + 7):
+              ways = [1] + [0] * x
+              for c in coins:                # coins outside: order doesn't matter
+                  for s in range(c, x + 1):
+                      ways[s] = (ways[s] + ways[s - c]) % mod
+              return ways[x]
+        traps:
+          - Swapping the two loops changes what you count (orderings vs combinations)
+          - A target x of 10^9 makes the table impossible
+        instead:
+          - if: the coin system is like 1, 2, 5, 10, …
+            target: greedy
+          - if: each coin can be used at most once
+            target: knapsack
+        tags: [coins, change, dp, ways, count, minimum, sum, knapsack]
+
+      - id: lis
+        section: CPH §7.2
+        label: longest increasing subsequence
+        name: LIS
+        alias: patience sorting
+        lead: Keep the smallest possible last value of an increasing run of each length.
+        when:
+          - The longest chain where each element is bigger than the one before
+          - Nested boxes or envelopes, after sorting by one dimension
+        how: >-
+          CPH gives an O(n²) DP: length[i] is 1 plus the best length[j] over j < i with
+          a[j] < a[i]. Faster: keep `tails[k]`, the smallest last value of an increasing
+          subsequence of length k + 1. For each x, replace the first tail ≥ x (binary search),
+          or append x if there is none.
+        time: O(n log n)
+        space: O(n)
+        vars: {n: 200000}
+        sketch: |
+          from bisect import bisect_left
+
+          def lis_length(a):
+              tails = []
+              for x in a:
+                  i = bisect_left(tails, x)    # bisect_right for non-decreasing
+                  if i == len(tails):
+                      tails.append(x)
+                  else:
+                      tails[i] = x
+              return len(tails)
+        traps:
+          - tails is not itself a valid subsequence. Store parent links to rebuild one
+          - Strictly increasing uses bisect_left, non-decreasing uses bisect_right
+        instead:
+          - if: n ≤ 5000 and you want the simplest code
+            target: dynamic-programming
+        tags: [lis, increasing, subsequence, longest, chain, patience, dp, binary-search]
+
+      - id: grid-paths
+        section: CPH §7.3
+        label: best path through a grid
+        name: grid DP
+        lead: Moving only right or down, each cell's best comes from the cell above or the one to the left.
+        when:
+          - Maximize or minimize a sum along a path from the top-left to the bottom-right corner
+          - Count such paths, possibly around blocked cells
+        how: >-
+          `dp[r][c] = g[r][c] + max(dp[r−1][c], dp[r][c−1])`, filled row by row. For counting,
+          add the two instead of taking the max. If moves can go in all four directions, it's
+          a shortest path problem instead.
+        time: O(n * m)
+        space: O(n * m)
+        vars: {n: 2000, m: 2000}
+        sketch: |
+          def max_path(g):
+              n, m = len(g), len(g[0])
+              dp = [[0] * m for _ in range(n)]
+              for r in range(n):
+                  for c in range(m):
+                      prev = []
+                      if r:
+                          prev.append(dp[r - 1][c])
+                      if c:
+                          prev.append(dp[r][c - 1])
+                      dp[r][c] = g[r][c] + max(prev, default=0)
+              return dp[n - 1][m - 1]
+        traps:
+          - Handle the first row and column, which have only one neighbor
+          - With moves in all four directions there is no valid fill order
+        instead:
+          - if: you can move in any direction and cells have costs
+            target: dijkstra
+          - if: cells are open or blocked and you want the fewest steps
+            target: bfs
+        tags: [grid, path, dp, matrix, right-down, count-paths, maximum-path]
+
+      - id: knapsack
+        section: CPH §7.4
+        label: pick items under a weight limit
+        name: 0/1 knapsack
+        lead: For each capacity, track the best value, or whether a total is reachable.
+        when:
+          - Each item can be taken at most once and the total weight is limited
+          - You want to know which sums can be formed from the given numbers
+        how: >-
+          `dp[w]` is the best value with total weight at most w. For each item, update w from
+          high to low so the item is used at most once:
+          `dp[w] = max(dp[w], dp[w − weight] + value)`.
+        time: O(n * W)
+        space: O(W)
+        vars: {n: 1000, W: 100000}
+        sketch: |
+          def knapsack(items, W):               # items: (weight, value)
+              dp = [0] * (W + 1)
+              for wt, val in items:
+                  for w in range(W, wt - 1, -1):  # high to low: each item once
+                      dp[w] = max(dp[w], dp[w - wt] + val)
+              return dp[W]
+        traps:
+          - Looping w from low to high lets an item be used many times (that's the unbounded version)
+          - W up to 10^9 makes the table impossible. Try a DP over values, or meet in the middle for small n
+        instead:
+          - if: n ≤ 40 and the weights are huge
+            target: meet-in-middle
+          - if: you only need the reachable sums
+            target: bitset
+        tags: [knapsack, subset-sum, capacity, weight, value, items, dp, budget]
+
+      - id: edit-distance
+        section: CPH §7.5
+        label: fewest edits between two strings
+        name: edit distance
+        alias: Levenshtein distance
+        lead: dp[i][j] is the cost of turning the first i characters of a into the first j of b.
+        when:
+          - Spell checking, diffing, sequence alignment
+          - Inserting, deleting or replacing a character each cost 1
+        how: >-
+          `dp[i][j] = min(dp[i−1][j] + 1, dp[i][j−1] + 1, dp[i−1][j−1] + (a[i−1] != b[j−1]))`
+          with dp[i][0] = i and dp[0][j] = j. Each row only needs the previous one.
+        time: O(n * m)
+        space: O(m)
+        vars: {n: 5000, m: 5000}
+        sketch: |
+          def edit_distance(a, b):
+              prev = list(range(len(b) + 1))
+              for i in range(1, len(a) + 1):
+                  cur = [i] + [0] * len(b)
+                  for j in range(1, len(b) + 1):
+                      diff = a[i - 1] != b[j - 1]
+                      cur[j] = min(prev[j] + 1,          # delete
+                                   cur[j - 1] + 1,       # insert
+                                   prev[j - 1] + diff)   # replace
+                  prev = cur
+              return prev[len(b)]
+        traps:
+          - Rebuilding the actual edits needs the full table, O(n·m) memory
+          - The longest common subsequence uses the same table with different rules
+        instead:
+          - if: you only test substrings for equality
+            target: string-hashing
+        tags: [edit-distance, levenshtein, strings, diff, alignment, lcs, dp, typo]
+
+      - id: tilings
+        section: CPH §7.6
+        label: count ways to tile a grid
+        name: profile DP
+        alias: broken profile
+        lead: Fill cells one by one; the state is which upcoming cells are already covered.
+        when:
+          - Counting tilings of an n × m grid with dominoes, where m is small (about 10)
+          - Any grid DP where one row's state fits in a bitmask
+        how: >-
+          Visit cells in row-major order. The state is an m-bit mask of which of the next m
+          cells are already filled. At an empty cell, place a vertical domino (covering the
+          cell below) or a horizontal one (covering the next cell). CPH's row-by-row version
+          runs in O(n·4^m); this cell-by-cell version is O(n·m·2^m).
+        time: O(n * m * 2^m)
+        space: O(2^m)
+        vars: {n: 1000, m: 10}
+        sketch: |
+          def domino_tilings(n, m):
+              dp = {0: 1}               # mask of the next m cells already filled
+              for cell in range(n * m):
+                  c = cell % m
+                  nxt = {}
+                  def put(mask, ways):
+                      nxt[mask] = nxt.get(mask, 0) + ways
+                  for mask, ways in dp.items():
+                      if mask & 1:                          # already covered
+                          put(mask >> 1, ways)
+                          continue
+                      put((mask >> 1) | 1 << (m - 1), ways)    # vertical
+                      if c + 1 < m and not mask & 2:
+                          put((mask >> 1) | 1, ways)          # horizontal
+                  dp = nxt
+              return dp.get(0, 0)
+        traps:
+          - Only practical when one side is small. Make m the smaller side
+          - The counts grow fast. Take them modulo something if the problem asks
+        instead:
+          - if: the states are subsets of a small set, not grid rows
+            target: bitmask-dp
+        tags: [tiling, dominoes, grid, bitmask, profile, count-ways, dp]
+
+  - id: ch08
+    prefix: "08"
+    title: amortized analysis
+    section: CPH ch. 8
+    leaves:
+      - id: two-pointers
+        section: CPH §8.1
+        label: pair with a target sum
+        name: two pointers
+        alias: 2SUM
+        lead: On sorted data, move one pointer in from each end.
+        when:
+          - Finding two values that add up to x
+          - Counting pairs whose sum is at most x
+        how: >-
+          Sort. Start with l at the left end and r at the right end. If a[l] + a[r] is too
+          small, move l right; if it's too big, move r left. Each pointer moves at most n
+          times, so the scan is O(n) after sorting.
+        time: O(n log n)
+        space: O(1)
+        vars: {n: 1000000}
+        sketch: |
+          def pair_with_sum(a, x):
+              a = sorted(a)
+              l, r = 0, len(a) - 1
+              while l < r:
+                  s = a[l] + a[r]
+                  if s == x:
+                      return a[l], a[r]
+                  if s < x:
+                      l += 1
+                  else:
+                      r -= 1
+              return None
+        traps:
+          - It only works on sorted data
+          - To report original indices, sort (value, index) pairs
+        instead:
+          - if: you need a contiguous stretch rather than a pair
+            target: sliding-window
+          - if: you'd rather not sort (one pass, O(n) average)
+            target: hash-set
+        tags: [two-pointers, 2sum, two-sum, pair, target-sum, sorted]
+
+      - id: sliding-window
+        section: CPH §8.1
+        label: best contiguous chunk
+        name: sliding window
+        lead: Grow the right end, and shrink the left end while the window breaks the rule.
+        when:
+          - The longest or shortest subarray with a property that survives shrinking (sum ≤ x with non-negative values, at most k distinct values)
+          - A subarray with sum exactly x when all values are positive
+        how: >-
+          Move `right` one step at a time and add a[right]. While the window is invalid,
+          remove a[left] and advance left. Both ends only move forward, so the total work is O(n).
+        time: O(n)
+        space: O(1)
+        vars: {n: 1000000}
+        sketch: |
+          def longest_at_most(a, x):   # values >= 0, longest window with sum <= x
+              best = left = total = 0
+              for right, v in enumerate(a):
+                  total += v
+                  while total > x:
+                      total -= a[left]
+                      left += 1
+                  best = max(best, right - left + 1)
+              return best
+        traps:
+          - Negative values break it, because shrinking no longer lowers the sum
+          - It needs a property where every window inside a valid window is also valid
+        instead:
+          - if: values can be negative and you want the largest sum
+            target: kadane
+          - if: you need the min or max of every window
+            target: window-min
+        tags: [sliding-window, two-pointers, subarray, contiguous, window, longest, shortest, substring]
+
+      - id: monotonic-stack
+        section: CPH §8.2
+        label: nearest smaller element to the left
+        name: monotonic stack
+        lead: Keep a stack of increasing values and pop everything that can never be an answer again.
+        when:
+          - For each element, the nearest earlier (or later) smaller or larger value
+          - Largest rectangle in a histogram, stock span
+        how: >-
+          Go left to right. Pop from the stack while its top is ≥ the current value; those can
+          never be the nearest smaller value for anything later. The top that remains is the
+          answer. Then push the current index. Each index is pushed and popped once.
+        time: O(n)
+        space: O(n)
+        vars: {n: 1000000}
+        sketch: |
+          def nearest_smaller_left(a):
+              res, st = [], []           # st holds indices with increasing values
+              for i, x in enumerate(a):
+                  while st and a[st[-1]] >= x:
+                      st.pop()
+                  res.append(st[-1] if st else -1)
+                  st.append(i)
+              return res
+        traps:
+          - Choosing >= or > decides how equal values are treated
+          - For the nearest value to the right, scan from the right
+        instead:
+          - if: you need the min of each window of fixed size
+            target: window-min
+          - if: the queries are arbitrary ranges
+            target: sparse-table
+        tags: [monotonic-stack, nearest-smaller, next-greater, stack, histogram, span]
+
+      - id: window-min
+        section: CPH §8.3
+        label: min of every window of size k
+        name: monotonic deque
+        alias: sliding window minimum
+        lead: A deque of indices with increasing values. Its front is the window's minimum.
+        when:
+          - The minimum or maximum of every window of fixed size k
+          - A DP where dp[i] needs the minimum of the last k values
+        how: >-
+          For each new index, pop from the back while those values are ≥ the new one, then
+          push it. Pop from the front if that index has left the window. The front holds the
+          minimum.
+        time: O(n)
+        space: O(k)
+        vars: {n: 1000000}
+        sketch: |
+          from collections import deque
+
+          def window_mins(a, k):
+              dq, out = deque(), []
+              for i, x in enumerate(a):
+                  while dq and a[dq[-1]] >= x:
+                      dq.pop()
+                  dq.append(i)
+                  if dq[0] <= i - k:
+                      dq.popleft()
+                  if i >= k - 1:
+                      out.append(a[dq[0]])
+              return out
+        traps:
+          - Store indices, not values, so you can tell when the front leaves the window
+          - A heap also works but costs O(n log n)
+        instead:
+          - if: the windows have arbitrary ends
+            target: sparse-table
+        tags: [sliding-window, minimum, maximum, deque, monotonic-queue, window-min, window-max]
+
+  - id: ch09
+    prefix: "09"
+    title: range queries
+    section: CPH ch. 9
+    leaves:
+      - id: prefix-sums
+        section: CPH §9.1
+        label: many range-sum queries
+        name: prefix sums
+        lead: Precompute running totals. Any range sum is the difference of two of them.
+        when:
+          - The array doesn't change and you answer many sum queries
+          - Counting elements of some kind inside a range
+        how: >-
+          `p[i]` is the sum of the first i elements. The sum of a[l..r] (inclusive) is
+          `p[r + 1] − p[l]`. Building takes O(n) and each query O(1).
+        time: O(n + q)
+        space: O(n)
+        vars: {n: 1000000, q: 1000000}
+        sketch: |
+          from itertools import accumulate
+
+          a = [3, 1, 4, 1, 5]
+          p = [0, *accumulate(a)]          # [0, 3, 4, 8, 9, 14]
+
+          def range_sum(l, r):             # inclusive, 0-based
+              return p[r + 1] - p[l]
+
+          range_sum(1, 3)                  # 1 + 4 + 1 = 6
+        traps:
+          - Off-by-one errors. Keep p one longer than a, with p[0] = 0
+          - If values change between queries, each change costs O(n)
+        instead:
+          - if: values change between queries
+            target: fenwick
+          - if: you need the min or max instead of the sum
+            target: sparse-table
+          - if: the data is a 2D grid
+            target: prefix-sums-2d
+        tags: [prefix-sums, range-sum, cumulative, queries, static, subarray-sum]
+
+      - id: prefix-sums-2d
+        section: CPH §9.1
+        label: rectangle sums in a grid
+        name: 2D prefix sums
+        lead: Precompute the sum of every top-left rectangle. Any rectangle is then four lookups.
+        when:
+          - Sums or counts inside many axis-aligned rectangles
+          - The grid doesn't change
+        how: >-
+          `P[r][c]` is the sum of the rectangle from (0, 0) to (r − 1, c − 1). Rows r1..r2 and
+          columns c1..c2 sum to `P[r2+1][c2+1] − P[r1][c2+1] − P[r2+1][c1] + P[r1][c1]`.
+        time: O(n * m + q)
+        space: O(n * m)
+        vars: {n: 2000, m: 2000, q: 1000000}
+        sketch: |
+          def build(g):
+              n, m = len(g), len(g[0])
+              P = [[0] * (m + 1) for _ in range(n + 1)]
+              for r in range(n):
+                  for c in range(m):
+                      P[r + 1][c + 1] = (g[r][c] + P[r][c + 1]
+                                         + P[r + 1][c] - P[r][c])
+              return P
+
+          def rect(P, r1, c1, r2, c2):      # inclusive corners
+              return P[r2 + 1][c2 + 1] - P[r1][c2 + 1] - P[r2 + 1][c1] + P[r1][c1]
+        traps:
+          - Get the signs right. The top-left corner is added back once
+          - With updates, use a 2D Fenwick or segment tree
+        instead:
+          - if: cells change between queries
+            target: segment-tree-2d
+        tags: [prefix-sums, 2d, grid, rectangle, matrix, submatrix-sum]
+
+      - id: sparse-table
+        section: CPH §9.1
+        label: range min, no updates
+        name: sparse table
+        lead: Precompute the minimum of every power-of-two block. Any range is two overlapping blocks.
+        when:
+          - Many min or max queries on an array that never changes
+          - You need O(1) per query
+        how: >-
+          `st[j][i]` is the min of a[i .. i + 2^j − 1], built from two halves. For a query
+          [l, r], let k = floor(log2(r − l + 1)) and answer `min(st[k][l], st[k][r − 2^k + 1])`.
+          It works for operations where overlap doesn't matter (min, max, gcd), not for sums.
+        time: O(n log n + q)
+        space: O(n log n)
+        vars: {n: 1000000, q: 1000000}
+        sketch: |
+          def build(a):
+              st = [a[:]]
+              j = 1
+              while 1 << j <= len(a):
+                  prev, half = st[-1], 1 << (j - 1)
+                  st.append([min(prev[i], prev[i + half])
+                             for i in range(len(a) - (1 << j) + 1)])
+                  j += 1
+              return st
+
+          def query(st, l, r):               # inclusive
+              k = (r - l + 1).bit_length() - 1
+              return min(st[k][l], st[k][r - (1 << k) + 1])
+        traps:
+          - Sums would count the overlap twice. Use prefix sums for those
+          - Any update means rebuilding the table
+        instead:
+          - if: the values change
+            target: segment-tree
+          - if: you need sums
+            target: prefix-sums
+        tags: [sparse-table, rmq, range-minimum, range-max, static, queries, gcd]
+
+      - id: fenwick
+        section: CPH §9.2
+        label: prefix sums with updates
+        name: Fenwick tree
+        alias: binary indexed tree
+        lead: Point updates and prefix sums, both in O(log n), in a few lines of code.
+        when:
+          - Values change between sum queries
+          - Counting how many values seen so far are ≤ x, using values as indices
+        how: >-
+          Position i (1-based) stores the sum of the `i & -i` elements ending at i. To add,
+          climb with `i += i & -i`; for a prefix sum, descend with `i -= i & -i`. A range sum
+          is the difference of two prefix sums.
+        time: O((n + q) log n)
+        space: O(n)
+        vars: {n: 1000000, q: 1000000}
+        sketch: |
+          class Fenwick:
+              def __init__(self, n):
+                  self.t = [0] * (n + 1)
+
+              def add(self, i, v):           # 1-based
+                  while i < len(self.t):
+                      self.t[i] += v
+                      i += i & -i
+
+              def prefix(self, i):           # sum of positions 1..i
+                  s = 0
+                  while i > 0:
+                      s += self.t[i]
+                      i -= i & -i
+                  return s
+
+              def query(self, l, r):
+                  return self.prefix(r) - self.prefix(l - 1)
+        traps:
+          - It's 1-based. add(0, v) loops forever
+          - Min and max can't be undone by subtraction. Use a segment tree for those
+        instead:
+          - if: you need min or max with updates
+            target: segment-tree
+          - if: you update whole ranges
+            target: lazy-segment-tree
+        tags: [fenwick, bit, binary-indexed-tree, prefix-sum, updates, point-update, range-sum, counting]
+
+      - id: segment-tree
+        section: CPH §9.3
+        label: range min / max / sum with updates
+        name: segment tree
+        lead: A binary tree over the array; each node stores the answer for its segment.
+        when:
+          - Point updates mixed with range queries for min, max, sum, gcd and similar
+          - The operation can't be undone, so a Fenwick tree won't do
+        how: >-
+          Store the tree in an array of size 2n with the leaves at n..2n − 1. To update, set a
+          leaf and recompute its ancestors. A query walks up from both ends of the range and
+          combines O(log n) nodes.
+        time: O(n + q log n)
+        space: O(n)
+        vars: {n: 1000000, q: 1000000}
+        sketch: |
+          class SegTree:                       # range minimum
+              def __init__(self, a):
+                  self.n = len(a)
+                  self.t = [0] * self.n + list(a)
+                  for i in range(self.n - 1, 0, -1):
+                      self.t[i] = min(self.t[2 * i], self.t[2 * i + 1])
+
+              def update(self, i, v):          # 0-based
+                  i += self.n
+                  self.t[i] = v
+                  while i > 1:
+                      i //= 2
+                      self.t[i] = min(self.t[2 * i], self.t[2 * i + 1])
+
+              def query(self, l, r):           # inclusive
+                  res = float("inf")
+                  l += self.n
+                  r += self.n
+                  while l <= r:
+                      if l % 2 == 1:
+                          res = min(res, self.t[l]); l += 1
+                      if r % 2 == 0:
+                          res = min(res, self.t[r]); r -= 1
+                      l //= 2; r //= 2
+                  return res
+        traps:
+          - The starting value must be the identity of the operation (inf for min, 0 for sum)
+          - This layout assumes the order of combining doesn't matter. For other operations, keep left and right results apart
+        instead:
+          - if: you update whole ranges
+            target: lazy-segment-tree
+          - if: there are no updates
+            target: sparse-table
+        tags: [segment-tree, range-query, range-minimum, range-max, range-sum, updates, rmq]
+
+      - id: coordinate-compression
+        section: CPH §9.4
+        label: huge coordinates, few points
+        name: coordinate compression
+        alias: index compression
+        lead: Replace each value by its rank among the values that actually occur.
+        when:
+          - Values go up to 10^9 but there are only about 10^5 distinct ones
+          - You want a Fenwick or segment tree indexed by value
+        how: >-
+          Collect every value you'll need (including those in queries), sort and remove
+          duplicates, then map each value to its index. Order is preserved, so comparisons
+          still work.
+        time: O(n log n)
+        space: O(n)
+        vars: {n: 1000000}
+        sketch: |
+          def compress(values):
+              xs = sorted(set(values))
+              rank = {v: i for i, v in enumerate(xs)}
+              return [rank[v] for v in values], xs
+
+          # xs[i] turns an index back into the original value
+        traps:
+          - Include the query values before compressing, or lookups will miss
+          - Distances between values are lost; only their order survives
+        instead:
+          - if: the values are already small
+            target: counting-sort
+          - if: you count values ≤ x as they arrive
+            target: fenwick
+        tags: [compression, coordinates, rank, mapping, large-values, discretize, indices]
+
+      - id: difference-array
+        section: CPH §9.4
+        label: add to a range, read points
+        name: difference array
+        lead: Record +v where a range starts and −v just after it ends. A prefix sum rebuilds the values.
+        when:
+          - Many "add v to a[l..r]" updates, then you read the final array
+          - Counting how many intervals cover each point
+        how: >-
+          For each update, do d[l] += v and d[r + 1] −= v. The value at i is the prefix sum of
+          d up to i. Offline that's O(1) per update. If reads and updates are mixed, keep d in
+          a Fenwick tree for O(log n) each.
+        time: O(n + q)
+        space: O(n)
+        vars: {n: 1000000, q: 1000000}
+        sketch: |
+          def apply_updates(n, updates):       # (l, r, v), inclusive
+              d = [0] * (n + 1)
+              for l, r, v in updates:
+                  d[l] += v
+                  d[r + 1] -= v
+              out, run = [], 0
+              for i in range(n):
+                  run += d[i]
+                  out.append(run)
+              return out
+        traps:
+          - Make d one longer than the array for the r + 1 write
+          - Range updates with range sums need a lazy segment tree (or two Fenwick trees)
+        instead:
+          - if: reads and updates are interleaved
+            target: fenwick
+          - if: you need range sums after range updates, online
+            target: lazy-segment-tree
+        tags: [difference-array, range-update, range-add, intervals, coverage, offline, sweep]
+
+  - id: ch10
+    prefix: "10"
+    title: bit manipulation
+    section: CPH ch. 10
+    leaves:
+      - id: bitmask-set
+        section: CPH §10.3
+        label: small set as one integer
+        name: bitmask
+        lead: A set of small elements fits in one integer, and set operations become bit operations.
+        when:
+          - The elements are 0..n−1 with small n
+          - States like "which items are taken" in a search or DP
+        how: >-
+          Element i is in the set when bit i is 1. Union is `a | b`, intersection `a & b`,
+          add `s | 1 << i`, remove `s & ~(1 << i)`, test `s >> i & 1`, size `s.bit_count()`.
+          Step through the submasks of s with `sub = (sub - 1) & s`.
+        time: O(1) per operation
+        space: O(1)
+        sketch: |
+          s = 0
+          s |= 1 << 3                 # add 3
+          s |= 1 << 5                 # add 5
+          has5 = s >> 5 & 1           # 1
+          size = s.bit_count()        # 2 (Python 3.10+)
+          s &= ~(1 << 3)              # remove 3
+          lowest = s & -s             # lowest set bit
+
+          sub = s                     # every non-empty submask of s
+          while sub:
+              print(bin(sub))
+              sub = (sub - 1) & s
+        traps:
+          - In C++, == binds tighter than &, so write (s & (1 << i)) == 0
+          - In C++, use 1LL << i for bits past 31
+        instead:
+          - if: you need a DP over all subsets
+            target: bitmask-dp
+          - if: the set has thousands of possible elements
+            target: bitset
+        tags: [bitmask, bits, set, subset, bit-operations, mask, xor, popcount]
+
+      - id: bit-parallel
+        section: CPH §10.4
+        label: compare many bit strings
+        name: bit-parallel tricks
+        alias: popcount
+        lead: XOR and popcount compare 64 bits in one instruction.
+        when:
+          - The smallest Hamming distance among n bit strings of length k
+          - Counting subgrids whose corners are all black, by ANDing pairs of rows
+        how: >-
+          Store each string as an integer. The Hamming distance of a and b is
+          `(a ^ b).bit_count()`. All pairs then cost O(n² · k/64) instead of O(n² · k). For
+          subgrids, AND two rows and count the common bits c; that pair of rows gives
+          c(c − 1)/2 subgrids.
+        time: O(n^2 * k / 64)
+        space: O(n * k / 64)
+        vars: {n: 10000, k: 1000}
+        sketch: |
+          def min_hamming(strings):          # strings of '0' and '1'
+              nums = [int(s, 2) for s in strings]
+              best = float("inf")
+              for i in range(len(nums)):
+                  for j in range(i + 1, len(nums)):
+                      best = min(best, (nums[i] ^ nums[j]).bit_count())
+              return best
+        traps:
+          - It's a constant-factor speedup; the complexity class is unchanged
+          - In Python the double loop is the bottleneck, so this pays off most in C++
+        instead:
+          - if: you need a set of booleans for a DP
+            target: bitset
+        tags: [bit-parallel, hamming, popcount, xor, and, bits, subgrid, speedup]
+
+      - id: bitmask-dp
+        section: CPH §10.5
+        label: best order of up to 20 items
+        name: DP over subsets
+        alias: bitmask DP
+        lead: The state is (which items are done, which one was last). That's 2^n · n states instead of n!.
+        when:
+          - Traveling salesman, assignment or scheduling over n ≤ 20 items
+          - The cost of the next step depends only on the set used so far and the last item
+        how: >-
+          `dp[mask][v]` is the best cost to visit exactly the items in mask, ending at v.
+          Extend it by adding an item u that isn't in mask. Process masks in increasing order;
+          every transition goes to a larger mask.
+        time: O(2^n * n^2)
+        space: O(2^n * n)
+        vars: {n: 16}
+        sketch: |
+          def tsp_path(dist):                 # shortest path visiting all, from 0
+              n = len(dist)
+              INF = float("inf")
+              dp = [[INF] * n for _ in range(1 << n)]
+              dp[1][0] = 0
+              for mask in range(1 << n):
+                  for v in range(n):
+                      if dp[mask][v] == INF:
+                          continue
+                      for u in range(n):
+                          if not mask >> u & 1:
+                              nm = mask | 1 << u
+                              dp[nm][u] = min(dp[nm][u], dp[mask][v] + dist[v][u])
+              return min(dp[(1 << n) - 1])
+        traps:
+          - Memory is 2^n · n values. For n = 20 that's about 2·10^7
+          - In Python, n ≈ 16 is a practical limit for the n² version
+        instead:
+          - if: n ≤ 10
+            target: permutations
+          - if: you need sums over submasks
+            target: sos-dp
+        tags: [bitmask-dp, tsp, traveling-salesman, subsets, assignment, hamiltonian, dp, permutations]
+
+      - id: sos-dp
+        section: CPH §10.5
+        label: sum over all submasks of every mask
+        name: SOS DP
+        alias: sum over subsets
+        lead: For every mask, total the values of all its submasks in O(2^n · n).
+        when:
+          - For each subset S, you need the sum of value(T) over all T ⊆ S
+          - Counting pairs with a & b == 0, or similar
+        how: >-
+          Start with `f[mask] = value[mask]`. For each bit i, for each mask that has bit i,
+          do `f[mask] += f[mask ^ (1 << i)]`. After all bits, f[mask] covers every submask.
+          Enumerating the submasks of every mask directly costs O(3^n).
+        time: O(2^n * n)
+        space: O(2^n)
+        vars: {n: 20}
+        sketch: |
+          def sos(value, n):             # len(value) == 2^n
+              f = value[:]
+              for i in range(n):
+                  for mask in range(1 << n):
+                      if mask >> i & 1:
+                          f[mask] += f[mask ^ (1 << i)]
+              return f
+        traps:
+          - The loop over bits must be the outer loop
+          - Looping over every submask of every mask is O(3^n), much slower
+        instead:
+          - if: you need the best order or path, not sums
+            target: bitmask-dp
+        tags: [sos, sum-over-subsets, submask, bitmask, dp, zeta-transform, subsets]

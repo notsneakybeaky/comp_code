@@ -1,0 +1,845 @@
+# Part II, Graph algorithms: chapters 16–20.
+
+part:
+  id: graphs
+  prefix: II
+  title: graph algorithms
+
+chapters:
+  - id: ch16
+    prefix: "16"
+    title: directed graphs
+    section: CPH ch. 16
+    leaves:
+      - id: topological-sort
+        section: CPH §16.1
+        label: tasks that depend on others
+        name: topological sort
+        lead: Order tasks so that each one comes after everything it depends on.
+        when:
+          - Build orders, course prerequisites, recalculating a spreadsheet
+          - Detecting a cycle of dependencies
+        how: >-
+          Kahn's algorithm: count the incoming edges of every node and queue the nodes that
+          have none. Pop one, append it to the order, and decrease its successors' counts,
+          queueing any that reach zero. Nodes that never come out lie on a cycle.
+          CPH uses DFS finish order instead, which works too.
+        time: O(n + m)
+        space: O(n + m)
+        vars: {n: 200000, m: 400000}
+        sketch: |
+          from collections import deque
+
+          def topo_order(n, edges):            # edge (a, b): a comes before b
+              adj = [[] for _ in range(n)]
+              indeg = [0] * n
+              for a, b in edges:
+                  adj[a].append(b)
+                  indeg[b] += 1
+              q = deque(i for i in range(n) if indeg[i] == 0)
+              order = []
+              while q:
+                  u = q.popleft()
+                  order.append(u)
+                  for v in adj[u]:
+                      indeg[v] -= 1
+                      if indeg[v] == 0:
+                          q.append(v)
+              return order if len(order) == n else None   # None: there's a cycle
+        traps:
+          - A cycle means no valid order exists. Check that every node came out
+          - Decide whether (a, b) means a before b or a depends on b, and stay consistent
+        instead:
+          - if: you need the longest chain or the number of paths
+            target: dag-dp
+          - if: you want the lexicographically smallest order (use a heap instead of the queue)
+            target: heap
+        tags: [depends-on, dependencies, topological-sort, dag, ordering, prerequisites, build-order, cycle, scheduling]
+
+      - id: dag-dp
+        section: CPH §16.2
+        label: count or longest paths in a DAG
+        name: DP on a DAG
+        lead: Process nodes in topological order. Each node's value comes from its predecessors.
+        when:
+          - Counting paths from a to b, or finding the longest path, in a graph without cycles
+          - Any DP whose states and transitions form a DAG
+        how: >-
+          Get a topological order. To count paths, add `paths[u]` to `paths[v]` for every edge
+          u → v. For the longest path, take `best[v] = max(best[v], best[u] + w)`. Shortest
+          paths in a DAG work the same way, even with negative weights.
+        time: O(n + m)
+        space: O(n)
+        vars: {n: 200000, m: 400000}
+        sketch: |
+          # order: the nodes in topological order
+          def count_paths(n, adj, order, src, mod=10**9 + 7):
+              paths = [0] * n
+              paths[src] = 1
+              for u in order:
+                  for v in adj[u]:
+                      paths[v] = (paths[v] + paths[u]) % mod
+              return paths
+        traps:
+          - Longest paths are easy only without cycles. In general graphs it's NP-hard
+          - Path counts grow exponentially. Use a modulus or big integers
+        instead:
+          - if: you first need the order itself
+            target: topological-sort
+          - if: the graph has cycles (condense them first)
+            target: scc
+        tags: [dag, dp, count-paths, longest-path, topological, depends-on, paths]
+
+      - id: successor-jumps
+        section: CPH §16.3
+        label: follow next-pointers k times
+        name: binary lifting
+        alias: successor graph
+        lead: Precompute where you land after 1, 2, 4, 8, … steps. Any k is a sum of those.
+        when:
+          - Every node has exactly one successor and you ask where you are after k steps, for huge k
+          - Many such queries
+        how: >-
+          `up[0][x]` is succ(x), and `up[j][x] = up[j−1][up[j−1][x]]`. To move k steps, apply
+          `up[j]` for every set bit j of k. With K the largest k, that's log K tables.
+        time: O((n + q) log K)
+        space: O(n log K)
+        vars: {n: 200000, q: 200000, K: 1e18}
+        sketch: |
+          def build(succ, max_k):
+              levels = max(1, max_k.bit_length())
+              up = [succ[:]]
+              for _ in range(1, levels):
+                  prev = up[-1]
+                  up.append([prev[prev[x]] for x in range(len(succ))])
+              return up
+
+          def jump(up, x, k):
+              j = 0
+              while k:
+                  if k & 1:
+                      x = up[j][x]
+                  k >>= 1
+                  j += 1
+              return x
+        traps:
+          - Memory is n · log K entries, about 60 tables for k up to 10^18
+          - If every query starts at the same node, finding the cycle and using arithmetic is simpler
+        instead:
+          - if: you need ancestors in a rooted tree
+            target: kth-ancestor
+          - if: you need the cycle itself
+            target: floyd-cycle
+        tags: [binary-lifting, successor, functional-graph, jump, k-steps, doubling, permutation]
+
+      - id: floyd-cycle
+        section: CPH §16.4
+        label: find the cycle in a next-pointer chain
+        name: Floyd's cycle finding
+        alias: tortoise and hare
+        lead: One pointer moves one step at a time, another two. They meet inside the cycle.
+        when:
+          - Following succ() from x eventually loops, and you need where the loop starts and how long it is
+          - You can't afford O(n) memory, or the sequence is implicit, like x → f(x)
+        how: >-
+          Move a by one step and b by two until they meet. Put a back at x and move both one
+          step at a time until they meet again; that's the first node of the cycle. Then walk b
+          around the cycle once to measure its length.
+        time: O(n)
+        space: O(1)
+        vars: {n: 1000000}
+        sketch: |
+          def find_cycle(succ, x):
+              a, b = succ(x), succ(succ(x))
+              while a != b:
+                  a, b = succ(a), succ(succ(b))
+              a = x
+              while a != b:
+                  a, b = succ(a), succ(b)
+              first = a
+              length, b = 1, succ(a)
+              while a != b:
+                  b = succ(b)
+                  length += 1
+              return first, length
+        traps:
+          - It assumes every node has exactly one successor
+          - With memory to spare, a dict of visited positions is simpler
+        instead:
+          - if: you need many jumps of k steps
+            target: successor-jumps
+        tags: [cycle, floyd, tortoise-hare, linked-list, functional-graph, rho, loop-detection]
+
+  - id: ch17
+    prefix: "17"
+    title: strong connectivity
+    section: CPH ch. 17
+    leaves:
+      - id: scc
+        section: CPH §17.1
+        label: groups that all reach each other
+        name: strongly connected components
+        alias: Kosaraju
+        lead: Two DFS passes, one for finish order and one on the reversed graph.
+        when:
+          - In a directed graph, finding groups where every node reaches every other
+          - Collapsing cycles into single nodes to get a DAG
+        how: >-
+          Run DFS and list the nodes by finish time. Then go through that list backwards and
+          run a search on the reversed graph from each node not yet assigned; each search
+          collects one component. The components come out in topological order.
+        time: O(n + m)
+        space: O(n + m)
+        vars: {n: 200000, m: 400000}
+        sketch: |
+          def scc(n, adj):
+              radj = [[] for _ in range(n)]
+              for u in range(n):
+                  for v in adj[u]:
+                      radj[v].append(u)
+              seen, order = [False] * n, []
+              for s in range(n):                      # pass 1: finish order
+                  if seen[s]:
+                      continue
+                  seen[s] = True
+                  stack = [(s, iter(adj[s]))]
+                  while stack:
+                      u, it = stack[-1]
+                      for v in it:
+                          if not seen[v]:
+                              seen[v] = True
+                              stack.append((v, iter(adj[v])))
+                              break
+                      else:
+                          stack.pop()
+                          order.append(u)
+              comp, c = [-1] * n, 0
+              for s in reversed(order):               # pass 2: reversed graph
+                  if comp[s] != -1:
+                      continue
+                  comp[s] = c
+                  stack = [s]
+                  while stack:
+                      u = stack.pop()
+                      for v in radj[u]:
+                          if comp[v] == -1:
+                              comp[v] = c
+                              stack.append(v)
+                  c += 1
+              return c, comp
+        traps:
+          - Pass 1 needs true DFS finish order. A stack that pushes all neighbors at once doesn't give it
+          - Recursive DFS in Python overflows on long chains
+        instead:
+          - if: the graph is undirected
+            target: components
+          - if: the constraints are pairs of boolean options
+            target: two-sat
+        tags: [scc, strongly-connected, kosaraju, tarjan, directed, condensation, cycles, groups]
+
+      - id: two-sat
+        section: CPH §17.2
+        label: pairs of either-or constraints
+        name: 2-SAT
+        lead: Turn each "a or b" into two implications, then check that no x shares a component with not-x.
+        when:
+          - Every choice is a boolean and each rule involves at most two of them (a or b, not both)
+          - Assigning sides, colors or on/off states to satisfy pairwise rules
+        how: >-
+          Make a node for x and one for not-x. A clause (a or b) adds the edges not-a → b and
+          not-b → a. Find the strongly connected components. It's unsatisfiable exactly when
+          some x and not-x share a component. Otherwise set x true when its component comes
+          after not-x's in topological order.
+        time: O(n + m)
+        space: O(n + m)
+        vars: {n: 100000, m: 200000}
+        sketch: |
+          def two_sat(n, clauses):          # clauses: (a, b) meaning a OR b
+              # literal x >= 0 is variable x; ~x (that is, -x - 1) is its negation
+              def node(lit):
+                  return 2 * lit if lit >= 0 else 2 * ~lit + 1
+
+              adj = [[] for _ in range(2 * n)]
+              for a, b in clauses:
+                  adj[node(~a)].append(node(b))     # not a -> b
+                  adj[node(~b)].append(node(a))     # not b -> a
+              _, comp = scc(2 * n, adj)             # from the SCC card
+              if any(comp[2 * x] == comp[2 * x + 1] for x in range(n)):
+                  return None
+              return [comp[2 * x] > comp[2 * x + 1] for x in range(n)]
+        traps:
+          - Three variables per clause (3-SAT) is NP-hard
+          - Each clause needs both implication edges
+        instead:
+          - if: you only need groups of mutually reachable nodes
+            target: scc
+        tags: [2-sat, two-sat, boolean, constraints, implications, either-or, satisfiability]
+
+  - id: ch18
+    prefix: "18"
+    title: tree queries
+    section: CPH ch. 18
+    leaves:
+      - id: kth-ancestor
+        section: CPH §18.1
+        label: k-th ancestor of a node
+        name: ancestor jumps
+        alias: binary lifting
+        lead: Store each node's 2^j-th ancestor, then climb k levels in O(log n) jumps.
+        when:
+          - Many queries for the node k levels above x
+          - The building block for lowest common ancestors
+        how: >-
+          `up[0][x]` is the parent of x, with the root pointing to itself.
+          `up[j][x] = up[j−1][up[j−1][x]]`. To climb k levels, jump by 2^j for every set bit
+          j of k.
+        time: O((n + q) log n)
+        space: O(n log n)
+        vars: {n: 200000, q: 200000}
+        sketch: |
+          def build(parent):                  # parent[root] == root
+              n = len(parent)
+              levels = max(1, (n - 1).bit_length())
+              up = [parent[:]]
+              for _ in range(1, levels):
+                  prev = up[-1]
+                  up.append([prev[prev[x]] for x in range(n)])
+              return up
+
+          def kth_ancestor(up, x, k):         # needs k <= depth[x]
+              j = 0
+              while k:
+                  if k & 1:
+                      x = up[j][x]
+                  k >>= 1
+                  j += 1
+              return x
+        traps:
+          - Check k against the depth. Because the root points to itself, overshooting quietly returns the root
+          - Build the tables level by level; no recursion needed
+        instead:
+          - if: you need the lowest common ancestor
+            target: lca
+          - if: the graph is a general next-pointer function
+            target: successor-jumps
+        tags: [binary-lifting, ancestor, kth-ancestor, tree, jump, doubling, parent]
+
+      - id: euler-tour
+        section: CPH §18.2
+        label: subtree sums with updates
+        name: Euler tour + Fenwick
+        alias: tree traversal array
+        lead: Number nodes in DFS order, and every subtree becomes one contiguous range.
+        when:
+          - Changing a node's value and asking for the sum over a subtree
+          - Sums from the root to a node, with updates
+        how: >-
+          Record `tin[u]` when DFS enters u and `tout[u]`, the last position used inside its
+          subtree. The subtree of u is exactly positions tin[u] .. tout[u]. Store values in a
+          Fenwick tree at their tin positions, and a subtree query becomes one range sum.
+        time: O((n + q) log n)
+        space: O(n)
+        vars: {n: 200000, q: 200000}
+        sketch: |
+          def euler_ranges(adj, root=0):
+              n = len(adj)
+              tin, tout, timer = [0] * n, [0] * n, 0
+              stack = [(root, -1, False)]
+              while stack:
+                  u, p, done = stack.pop()
+                  if done:
+                      tout[u] = timer - 1         # last position in u's subtree
+                      continue
+                  tin[u] = timer
+                  timer += 1
+                  stack.append((u, p, True))
+                  for v in adj[u]:
+                      if v != p:
+                          stack.append((v, u, False))
+              return tin, tout
+
+          # subtree sum of u, with a 1-based Fenwick tree:
+          # fenwick.query(tin[u] + 1, tout[u] + 1)
+        traps:
+          - Index the Fenwick tree by tin positions, not by node ids
+          - For root-to-node sums, add a node's value over its whole subtree range; a point query then gives the path sum
+        instead:
+          - if: you need queries on the path between two nodes
+            target: lca
+          - if: there are no updates
+            target: tree-dp
+        tags: [euler-tour, subtree, tree, fenwick, flatten, dfs-order, tin-tout, subtree-query]
+
+      - id: lca
+        section: CPH §18.3
+        label: lowest common ancestor / tree distance
+        name: LCA
+        alias: lowest common ancestor
+        lead: Lift the deeper node to the same depth, then lift both while their ancestors differ.
+        when:
+          - The distance between two nodes of a tree
+          - Path queries that split where the two branches meet
+        how: >-
+          With binary lifting tables and depths, jump the deeper node up by the depth
+          difference. If the nodes are now equal, that's the answer. Otherwise, for j from
+          high to low, jump both when `up[j][a] != up[j][b]`; the answer is then the parent
+          of a. The distance is depth[a] + depth[b] − 2·depth[lca].
+        time: O((n + q) log n)
+        space: O(n log n)
+        vars: {n: 200000, q: 200000}
+        sketch: |
+          def lca(up, depth, a, b):           # up from the k-th ancestor card
+              if depth[a] < depth[b]:
+                  a, b = b, a
+              diff, j = depth[a] - depth[b], 0
+              while diff:
+                  if diff & 1:
+                      a = up[j][a]
+                  diff >>= 1
+                  j += 1
+              if a == b:
+                  return a
+              for j in range(len(up) - 1, -1, -1):
+                  if up[j][a] != up[j][b]:
+                      a, b = up[j][a], up[j][b]
+              return up[0][a]
+
+          def dist(up, depth, a, b):
+              return depth[a] + depth[b] - 2 * depth[lca(up, depth, a, b)]
+        traps:
+          - The root must point to itself in up[0], or jumps fall off the tree
+          - Compute depths with an iterative traversal for deep trees
+        instead:
+          - if: you need the k-th ancestor itself
+            target: kth-ancestor
+          - if: you need sums over subtrees
+            target: euler-tour
+        tags: [lca, lowest-common-ancestor, tree, distance, binary-lifting, path, ancestor]
+
+      - id: small-to-large
+        section: CPH §18.4
+        label: merge child data up the tree
+        name: small-to-large merging
+        lead: Merge each child's set into the biggest one. Every element moves O(log n) times.
+        when:
+          - Per-subtree questions like "how many distinct colors?", for every node
+          - Offline subtree queries that need a whole set per node
+        how: >-
+          Process children before parents. Each node keeps the set of its largest child and
+          inserts the elements of its other children, and its own, into it. An element only
+          ever moves into a set at least as large as the one it left, so its set at least
+          doubles each time and it moves O(log n) times.
+        time: O(n log n) average
+        space: O(n)
+        vars: {n: 200000}
+        sketch: |
+          def distinct_colors(adj, color, root=0):
+              n = len(adj)
+              parent, order, seen = [-1] * n, [], [False] * n
+              seen[root] = True
+              stack = [root]
+              while stack:
+                  u = stack.pop()
+                  order.append(u)
+                  for v in adj[u]:
+                      if not seen[v]:
+                          seen[v] = True
+                          parent[v] = u
+                          stack.append(v)
+              sets, ans = [None] * n, [0] * n
+              for u in reversed(order):            # children first
+                  big = {color[u]}
+                  for v in adj[u]:
+                      if v == parent[u]:
+                          continue
+                      small = sets[v]
+                      if len(small) > len(big):
+                          big, small = small, big
+                      big |= small                 # small into large
+                      sets[v] = None
+                  sets[u] = big
+                  ans[u] = len(big)
+              return ans
+        traps:
+          - Always merge the smaller set into the larger one, or it degrades to O(n²)
+          - Drop each child's set after merging to save memory
+        instead:
+          - if: values change and you need sums, not sets
+            target: euler-tour
+        tags: [small-to-large, merging, dsu-on-tree, subtree, distinct, offline, sets, tree]
+
+  - id: ch19
+    prefix: "19"
+    title: paths and circuits
+    section: CPH ch. 19
+    leaves:
+      - id: euler-path
+        section: CPH §19.1
+        label: use every edge exactly once
+        name: Eulerian path
+        alias: Hierholzer's algorithm
+        lead: Walk until stuck, then splice in detours from nodes that still have unused edges.
+        when:
+          - Drawing a figure without lifting the pen, or driving every road once
+          - Rebuilding a sequence from its overlapping pairs
+        how: >-
+          In an undirected graph whose edges are all connected, an Euler circuit exists when
+          every degree is even, and an Euler path when exactly two degrees are odd (start at
+          one of them). Hierholzer: follow unused edges using a stack; when a node has none
+          left, pop it onto the answer, which comes out reversed.
+        time: O(n + m)
+        space: O(n + m)
+        vars: {n: 100000, m: 200000}
+        sketch: |
+          def euler_path(n, edges, start):   # undirected; check the degrees first
+              adj = [[] for _ in range(n)]
+              for i, (u, v) in enumerate(edges):
+                  adj[u].append((v, i))
+                  adj[v].append((u, i))
+              used = [False] * len(edges)
+              ptr = [0] * n
+              stack, path = [start], []
+              while stack:
+                  u = stack[-1]
+                  while ptr[u] < len(adj[u]) and used[adj[u][ptr[u]][1]]:
+                      ptr[u] += 1
+                  if ptr[u] == len(adj[u]):
+                      path.append(stack.pop())
+                  else:
+                      v, i = adj[u][ptr[u]]
+                      used[i] = True
+                      stack.append(v)
+              return path[::-1] if len(path) == len(edges) + 1 else None
+        traps:
+          - Check the degree conditions and that all edges are connected first
+          - In a directed graph, in-degree must equal out-degree (for a path, one node has one extra out and one has one extra in)
+        instead:
+          - if: you must visit every node once, not every edge
+            target: hamiltonian-path
+        tags: [euler, eulerian-path, circuit, every-edge, hierholzer, one-stroke, route]
+
+      - id: hamiltonian-path
+        section: CPH §19.2
+        label: visit every node exactly once
+        name: Hamiltonian path
+        lead: NP-hard in general. For n ≤ 20, a DP over (visited set, current node).
+        when:
+          - Visiting every city exactly once
+          - n is small
+        how: >-
+          `can[mask]` holds, as bits, the nodes v such that some path visits exactly the nodes
+          in mask and ends at v. Extend with an edge v → u where u isn't in mask. A Hamiltonian
+          path exists when the full mask has any ending. It's the same DP as the traveling
+          salesman one.
+        time: O(2^n * n^2)
+        space: O(2^n)
+        vars: {n: 16}
+        sketch: |
+          def has_hamiltonian_path(n, adj):   # adj: neighbor lists
+              can = [0] * (1 << n)            # bit v set: a path ends at v
+              for v in range(n):
+                  can[1 << v] |= 1 << v
+              for mask in range(1 << n):
+                  ends, v = can[mask], 0
+                  while ends >> v:
+                      if ends >> v & 1:
+                          for u in adj[v]:
+                              if not mask >> u & 1:
+                                  can[mask | 1 << u] |= 1 << u
+                      v += 1
+              return can[(1 << n) - 1] != 0
+        traps:
+          - There is no simple degree test like the Euler case
+          - Past n ≈ 20 this is too slow
+        instead:
+          - if: you must use every edge once instead
+            target: euler-path
+          - if: edges have costs and you want the cheapest route
+            target: bitmask-dp
+        tags: [hamiltonian, visit-all-nodes, tsp, bitmask-dp, np-hard, path, cycle]
+
+      - id: de-bruijn
+        section: CPH §19.3
+        label: shortest string containing every code
+        name: De Bruijn sequence
+        lead: An Euler circuit over (n−1)-character words contains every n-character code exactly once.
+        when:
+          - The shortest string containing every length-n string over k letters
+          - Trying every code on a keypad that only checks the last n digits
+        how: >-
+          Nodes are the strings of length n − 1, and each has k outgoing edges (append one
+          letter). An Euler circuit uses every edge, that is every length-n string, once. As a
+          plain string the result has length k^n + n − 1.
+        time: O(k^n)
+        space: O(k^n)
+        vars: {k: 2, n: 20}
+        sketch: |
+          def de_bruijn(k, n):          # letters 0..k-1; Lyndon-word construction
+              a = [0] * k * n
+              seq = []
+
+              def db(t, p):
+                  if t > n:
+                      if n % p == 0:
+                          seq.extend(a[1:p + 1])
+                  else:
+                      a[t] = a[t - p]
+                      db(t + 1, p)
+                      for j in range(a[t - p] + 1, k):
+                          a[t] = j
+                          db(t + 1, t)
+
+              db(1, 1)
+              return seq + seq[:n - 1]    # cyclic -> plain, length k^n + n - 1
+        traps:
+          - The cyclic sequence has length k^n. As a plain string, repeat its first n − 1 letters at the end
+          - k^n grows fast. k = 2 and n = 20 is already about 10^6 letters
+        instead:
+          - if: you need a general Euler path
+            target: euler-path
+        tags: [de-bruijn, sequence, every-code, superstring, euler-circuit, combinatorics, keypad]
+
+      - id: knights-tour
+        section: CPH §19.4
+        label: knight visits every square
+        name: Warnsdorf's rule
+        lead: Always move to the square with the fewest onward moves.
+        when:
+          - Building a knight's tour on an n × n board
+          - A heuristic for Hamiltonian paths on grid-like graphs
+        how: >-
+          From the current square, count for each possible move how many unvisited squares
+          it would lead to, and go where that count is smallest. With this rule, search finds
+          tours quickly on most boards; plain backtracking is hopeless.
+        time: O(n^2)
+        space: O(n^2)
+        vars: {n: 1000}
+        sketch: |
+          MOVES = [(1, 2), (2, 1), (2, -1), (1, -2),
+                   (-1, -2), (-2, -1), (-2, 1), (-1, 2)]
+
+          def knights_tour(n, r=0, c=0):
+              board = [[0] * n for _ in range(n)]
+
+              def free(r, c):
+                  return 0 <= r < n and 0 <= c < n and not board[r][c]
+
+              def degree(r, c):
+                  return sum(free(r + dr, c + dc) for dr, dc in MOVES)
+
+              for step in range(1, n * n + 1):
+                  board[r][c] = step
+                  options = [(degree(r + dr, c + dc), r + dr, c + dc)
+                             for dr, dc in MOVES if free(r + dr, c + dc)]
+                  if not options:
+                      break
+                  _, r, c = min(options)
+              return board if step == n * n else None
+        traps:
+          - It's a heuristic and can still get stuck with unlucky ties. Add backtracking for a guarantee
+          - No tour exists on 2 × 2, 3 × 3 or 4 × 4 boards
+        instead:
+          - if: you need an exact answer on a small general graph
+            target: hamiltonian-path
+        tags: [knight, knights-tour, chess, warnsdorf, heuristic, hamiltonian, board]
+
+  - id: ch20
+    prefix: "20"
+    title: flows and cuts
+    section: CPH ch. 20
+    leaves:
+      - id: max-flow
+        section: CPH §20.1
+        label: max throughput from source to sink
+        name: maximum flow
+        alias: Edmonds–Karp
+        lead: Keep finding paths with spare capacity, using BFS, and push flow along them.
+        when:
+          - Sending as much as possible through a network whose edges have capacities
+          - Many assignment and cut problems reduce to it
+        how: >-
+          Every edge gets a reverse edge with capacity 0. Find a path from s to t with
+          remaining capacity (BFS makes it Edmonds–Karp), push the bottleneck amount along it,
+          and add that amount to the reverse edges so it can be undone later. Repeat until no
+          path is left.
+        time: O(n * m^2)
+        space: O(n + m)
+        vars: {n: 500, m: 1000}
+        sketch: |
+          from collections import deque
+
+          def max_flow(n, edges, s, t):         # edges: (u, v, capacity)
+              cap = [dict() for _ in range(n)]
+              for u, v, c in edges:
+                  cap[u][v] = cap[u].get(v, 0) + c
+                  cap[v].setdefault(u, 0)
+              flow = 0
+              while True:
+                  parent = {s: None}
+                  q = deque([s])
+                  while q and t not in parent:
+                      u = q.popleft()
+                      for v, c in cap[u].items():
+                          if c > 0 and v not in parent:
+                              parent[v] = u
+                              q.append(v)
+                  if t not in parent:
+                      return flow, cap         # cap now holds the residual graph
+                  push, v = float("inf"), t
+                  while parent[v] is not None:
+                      push = min(push, cap[parent[v]][v])
+                      v = parent[v]
+                  v = t
+                  while parent[v] is not None:
+                      u = parent[v]
+                      cap[u][v] -= push
+                      cap[v][u] += push
+                      v = u
+                  flow += push
+        traps:
+          - Without reverse edges the answer can be wrong
+          - An undirected edge needs its capacity in both directions
+          - The O(n·m²) bound is pessimistic; real runs are usually far faster
+        instead:
+          - if: you need the edges of the cut
+            target: min-cut
+          - if: it's pairing up two groups
+            target: bipartite-matching
+        tags: [max-flow, flow, network, capacity, edmonds-karp, ford-fulkerson, throughput, augmenting-path]
+
+      - id: min-cut
+        section: CPH §20.1
+        label: cheapest edges to cut s from t
+        name: minimum cut
+        lead: The minimum cut equals the maximum flow, and the nodes still reachable after the flow mark it.
+        when:
+          - Removing the cheapest set of edges so that t can't be reached from s
+          - Separating two groups at the least cost
+        how: >-
+          Run max flow. Then find the nodes reachable from s through edges with remaining
+          capacity. The cut is every original edge from a reachable node to an unreachable one,
+          and its total capacity equals the max flow.
+        time: O(n * m^2)
+        space: O(n + m)
+        vars: {n: 500, m: 1000}
+        sketch: |
+          def min_cut_edges(cap, edges, s):
+              # cap: the residual capacities returned by max_flow
+              seen, stack = {s}, [s]
+              while stack:
+                  u = stack.pop()
+                  for v, c in cap[u].items():
+                      if c > 0 and v not in seen:
+                          seen.add(v)
+                          stack.append(v)
+              return [(u, v) for u, v, c in edges if u in seen and v not in seen]
+        traps:
+          - Use the residual capacities after the flow, not the original ones
+          - To cut nodes instead of edges, split each node into an in-node and an out-node joined by its cost
+        instead:
+          - if: you only need the value
+            target: max-flow
+        tags: [min-cut, cut, separate, max-flow, network, disconnect, cheapest-cut]
+
+      - id: disjoint-paths
+        section: CPH §20.2
+        label: how many paths share no edge?
+        name: edge-disjoint paths
+        lead: Give every edge capacity 1. The max flow is the number of edge-disjoint paths.
+        when:
+          - How many independent routes connect s and t
+          - How many edges must fail before s and t are disconnected
+        how: >-
+          Set every capacity to 1 and run max flow. The flow is at most n, and each augmenting
+          path costs O(m). For paths that share no node, split each node v into v_in → v_out
+          with capacity 1.
+        time: O(n * m)
+        space: O(n + m)
+        vars: {n: 1000, m: 10000}
+        sketch: |
+          # unit capacities: each augmenting path adds one disjoint path
+          paths, _ = max_flow(n, [(u, v, 1) for u, v in edges], s, t)
+
+          # node-disjoint: node v becomes v_in = 2v and v_out = 2v + 1
+          split = [(2 * v, 2 * v + 1, 1) for v in range(n)]
+          split += [(2 * u + 1, 2 * v, 1) for u, v in edges]
+          node_paths, _ = max_flow(2 * n, split, 2 * s + 1, 2 * t)
+        traps:
+          - In an undirected graph, add each edge in both directions
+          - Augmenting paths aren't the final paths. Follow edges carrying flow to read them off
+        instead:
+          - if: edges have different capacities
+            target: max-flow
+        tags: [disjoint-paths, edge-disjoint, node-disjoint, routes, max-flow, connectivity, independent]
+
+      - id: bipartite-matching
+        section: CPH §20.3
+        label: pair up two groups
+        name: bipartite matching
+        alias: augmenting paths
+        lead: Match left nodes to right nodes, rerouting earlier matches along alternating paths.
+        when:
+          - Assigning workers to jobs or students to projects, one each
+          - The largest number of pairs from a list of allowed pairs
+        how: >-
+          For each left node, look for an augmenting path with DFS: take a free right
+          neighbor, or one whose current partner can move to another right node. Each success
+          adds one pair. It's max flow with unit capacities. By König's theorem, the maximum
+          matching also equals the minimum vertex cover.
+        time: O(n * m)
+        space: O(n + m)
+        vars: {n: 2000, m: 20000}
+        sketch: |
+          def max_matching(left_adj, n_right):
+              match_r = [-1] * n_right            # right node -> left partner
+
+              def augment(u, seen):
+                  for v in left_adj[u]:
+                      if v in seen:
+                          continue
+                      seen.add(v)
+                      if match_r[v] == -1 or augment(match_r[v], seen):
+                          match_r[v] = u
+                          return True
+                  return False
+
+              return sum(augment(u, set()) for u in range(len(left_adj)))
+        traps:
+          - Recursion can go n levels deep. Raise the limit or rewrite it iteratively
+          - Hopcroft–Karp is faster (O(m√n)) for big graphs
+        instead:
+          - if: you need the fewest chains covering a DAG
+            target: path-cover
+          - if: edges have capacities
+            target: max-flow
+        tags: [matching, bipartite, pairing, assignment, workers-jobs, kuhn, augmenting-path, konig]
+
+      - id: path-cover
+        section: CPH §20.4
+        label: fewest chains covering a DAG
+        name: path cover
+        lead: The fewest node-disjoint paths covering a DAG is n minus a maximum matching.
+        when:
+          - The fewest workers for tasks with precedence, each worker following one chain
+          - The fewest chains covering a partial order
+        how: >-
+          Make a bipartite graph with a left and a right copy of every node; an edge u → v
+          becomes left u to right v. Each matched edge joins two paths into one, so the answer
+          is n − matching. If paths may share nodes, first add u → v whenever v is reachable
+          from u. That number equals the largest antichain (Dilworth's theorem).
+        time: O(n * m)
+        space: O(n + m)
+        vars: {n: 2000, m: 20000}
+        sketch: |
+          def min_path_cover(n, dag_edges):      # node-disjoint paths in a DAG
+              left_adj = [[] for _ in range(n)]
+              for u, v in dag_edges:
+                  left_adj[u].append(v)
+              return n - max_matching(left_adj, n)   # from the matching card
+        traps:
+          - It only works on DAGs
+          - Node-disjoint and general path covers differ. The general one needs the reachability edges first
+        instead:
+          - if: you just need a matching
+            target: bipartite-matching
+        tags: [path-cover, dag, chains, dilworth, antichain, matching, scheduling]
